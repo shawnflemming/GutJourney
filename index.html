@@ -294,7 +294,7 @@ const Audio3D = (function(){
   }
 
   function init(){
-    if(started) return;
+    if(started){ resume(); return; }   // re-begin: wake a suspended context (mobile!)
     const AC=window.AudioContext||window.webkitAudioContext;
     if(!AC) return;
     ctx=new AC();
@@ -422,17 +422,36 @@ const Audio3D = (function(){
     if(id==="esophagus") setTimeout(()=>gulp(),150);
   }
 
+  /* splash: impact thwack + churning water tail + droplets raining back in */
   function splash(){
     if(!ctx||muted) return;
     const t=now();
-    const src=ctx.createBufferSource(); src.buffer=makeNoiseBuffer();
-    const f=ctx.createBiquadFilter(); f.type="bandpass"; f.frequency.setValueAtTime(1800,t);
-    f.frequency.exponentialRampToValueAtTime(400,t+0.5); f.Q.value=0.7;
-    const g=ctx.createGain(); g.gain.setValueAtTime(0.0001,t);
-    g.gain.linearRampToValueAtTime(0.6,t+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t+0.7);
-    src.connect(f); f.connect(g); g.connect(master); src.start(t); src.stop(t+0.75);
-    bubble(150,0.35,0.4);
-    setTimeout(()=>bubble(110,0.4,0.3),120);
+    // 1) the broadband impact slap
+    const s1=ctx.createBufferSource(); s1.buffer=makeNoiseBuffer();
+    const f1=ctx.createBiquadFilter(); f1.type="bandpass"; f1.Q.value=0.6;
+    f1.frequency.setValueAtTime(2600,t); f1.frequency.exponentialRampToValueAtTime(900,t+0.12);
+    const g1=ctx.createGain(); g1.gain.setValueAtTime(0.0001,t);
+    g1.gain.linearRampToValueAtTime(0.85,t+0.012); g1.gain.exponentialRampToValueAtTime(0.0001,t+0.18);
+    s1.connect(f1); f1.connect(g1); g1.connect(master); s1.start(t); s1.stop(t+0.2);
+    // 2) churning water tail
+    const s2=ctx.createBufferSource(); s2.buffer=makeNoiseBuffer();
+    const f2=ctx.createBiquadFilter(); f2.type="lowpass";
+    f2.frequency.setValueAtTime(900,t); f2.frequency.exponentialRampToValueAtTime(260,t+0.8);
+    const g2=ctx.createGain(); g2.gain.setValueAtTime(0.0001,t);
+    g2.gain.linearRampToValueAtTime(0.5,t+0.05); g2.gain.exponentialRampToValueAtTime(0.0001,t+0.85);
+    s2.connect(f2); f2.connect(g2); g2.connect(master); s2.start(t); s2.stop(t+0.9);
+    // 3) little droplets plinking back into the water
+    for(let i=0;i<8;i++){
+      const dt0=0.08+Math.random()*0.45, dur=0.05+Math.random()*0.05;
+      const o=ctx.createOscillator(); o.type='sine';
+      const f0=380+Math.random()*500;
+      o.frequency.setValueAtTime(f0,t+dt0);
+      o.frequency.exponentialRampToValueAtTime(f0*2.4,t+dt0+dur);
+      const g=ctx.createGain(); g.gain.setValueAtTime(0.0001,t+dt0);
+      g.gain.linearRampToValueAtTime(0.16,t+dt0+0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001,t+dt0+dur);
+      o.connect(g); g.connect(master); o.start(t+dt0); o.stop(t+dt0+dur+0.02);
+    }
   }
 
   /* pee: high-frequency stream hitting water */
@@ -478,62 +497,80 @@ const Audio3D = (function(){
     setTimeout(()=>splash(),35);
   }
 
-  /* fart: low sputtery sawtooth with a choppy amplitude wobble (the brrrt)
+  /* fart: a ragged burst of short low "putt" pulses — the classic brrrt.
      opts: {big} = high-fibre food → longer/louder; {wet} = diarrhea → squelchy */
   function fart(opts){
     if(!ctx||muted) return;
     const big=!!(opts&&opts.big), wet=!!(opts&&opts.wet);
-    const t=now(), dur=0.5+Math.random()*0.18+(big?0.28:0)+(wet?0.35:0);
-    const o=ctx.createOscillator(); o.type='sawtooth';
-    o.frequency.setValueAtTime(wet?80:95,t);
-    o.frequency.linearRampToValueAtTime(wet?52:68,t+dur*0.25);
-    o.frequency.linearRampToValueAtTime(wet?100:125,t+dur*0.6);
-    o.frequency.linearRampToValueAtTime(wet?42:55,t+dur);
-    const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=wet?520:850; lp.Q.value=4;
-    const g=ctx.createGain();
-    g.gain.setValueAtTime(0.0001,t);
-    g.gain.linearRampToValueAtTime(0.5+(big?0.12:0),t+0.03);
-    g.gain.setValueAtTime(0.46+(big?0.1:0),t+dur*0.8);
-    g.gain.exponentialRampToValueAtTime(0.0001,t+dur+0.08);
-    // amplitude flutter that gives it the raspberry "brap" (slower+deeper when wet)
-    const wob=ctx.createOscillator(); wob.type='square';
-    wob.frequency.setValueAtTime(wet?15:20,t); wob.frequency.linearRampToValueAtTime(wet?26:34,t+dur);
-    const wobG=ctx.createGain(); wobG.gain.value=wet?0.6:0.45;
-    wob.connect(wobG); wobG.connect(g.gain);
-    o.connect(lp); lp.connect(g); g.connect(master);
-    o.start(t); o.stop(t+dur+0.1); wob.start(t); wob.stop(t+dur+0.1);
+    const t0=now();
+    const n=9+Math.floor(Math.random()*4)+(big?5:0)+(wet?5:0);
+    let tt=t0;
+    for(let i=0;i<n;i++){
+      const dur=0.045+Math.random()*0.04+(wet?0.025:0);
+      const f0=(wet?55:75)+Math.random()*30-i*1.2;          // pitch droops as it runs out
+      const o=ctx.createOscillator(); o.type='sawtooth';
+      o.frequency.setValueAtTime(f0,tt);
+      o.frequency.exponentialRampToValueAtTime(Math.max(30,f0*0.7),tt+dur);
+      const lp=ctx.createBiquadFilter(); lp.type='lowpass';
+      lp.frequency.value=wet?380:520; lp.Q.value=2.5;
+      const g=ctx.createGain();
+      const v=(0.55+(big?0.15:0))*(0.7+Math.random()*0.5);
+      g.gain.setValueAtTime(0.0001,tt);
+      g.gain.linearRampToValueAtTime(v,tt+0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001,tt+dur);
+      o.connect(lp); lp.connect(g); g.connect(master);
+      o.start(tt); o.stop(tt+dur+0.02);
+      tt+=dur*(0.55+Math.random()*0.5);                      // ragged, overlapping spacing
+    }
     if(wet){ // squelchy noise layer underneath
       const src=ctx.createBufferSource(); src.buffer=makeNoiseBuffer();
-      const f=ctx.createBiquadFilter(); f.type='lowpass'; f.frequency.setValueAtTime(420,t);
-      f.frequency.exponentialRampToValueAtTime(160,t+dur); f.Q.value=2;
-      const ng=ctx.createGain(); ng.gain.setValueAtTime(0.0001,t);
-      ng.gain.linearRampToValueAtTime(0.3,t+0.05);
-      ng.gain.exponentialRampToValueAtTime(0.0001,t+dur+0.1);
-      src.connect(f); f.connect(ng); ng.connect(master); src.start(t); src.stop(t+dur+0.15);
+      const f=ctx.createBiquadFilter(); f.type='lowpass'; f.frequency.setValueAtTime(300,t0);
+      f.frequency.exponentialRampToValueAtTime(120,tt); f.Q.value=3;
+      const ng=ctx.createGain(); ng.gain.setValueAtTime(0.0001,t0);
+      ng.gain.linearRampToValueAtTime(0.32,t0+0.05);
+      ng.gain.exponentialRampToValueAtTime(0.0001,tt+0.1);
+      src.connect(f); f.connect(ng); ng.connect(master); src.start(t0); src.stop(tt+0.15);
     }
   }
 
-  /* meow: a "me-ow" pitch arc with vibrato and a vowel formant */
+  /* meow: voice-style synthesis — soft "m", open "eee", closing "ow",
+     shaped by two vocal-tract formant filters in parallel */
   function meow(){
     if(!ctx||muted) return;
-    const t=now();
-    const o=ctx.createOscillator(); o.type='sawtooth';
-    o.frequency.setValueAtTime(500,t);
-    o.frequency.linearRampToValueAtTime(770,t+0.18);
-    o.frequency.linearRampToValueAtTime(420,t+0.62);
-    const vib=ctx.createOscillator(); vib.type='sine'; vib.frequency.value=13;
-    const vibG=ctx.createGain(); vibG.gain.value=18; vib.connect(vibG); vibG.connect(o.frequency);
-    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.Q.value=5;
-    bp.frequency.setValueAtTime(850,t);
-    bp.frequency.linearRampToValueAtTime(1550,t+0.2);
-    bp.frequency.linearRampToValueAtTime(780,t+0.62);
+    const t=now(), D=0.85;
+    const o1=ctx.createOscillator(); o1.type='triangle';   // fundamental (soft, vocal)
+    const o2=ctx.createOscillator(); o2.type='sawtooth';   // quiet octave for body
+    [[o1,1],[o2,2]].forEach(([o,m])=>{
+      o.frequency.setValueAtTime(330*m,t);
+      o.frequency.linearRampToValueAtTime(620*m,t+0.22);   // rise into "eee"
+      o.frequency.setValueAtTime(620*m,t+0.34);
+      o.frequency.linearRampToValueAtTime(280*m,t+D);      // fall into "ow"
+    });
+    const vib=ctx.createOscillator(); vib.type='sine'; vib.frequency.value=11;
+    const vibG=ctx.createGain(); vibG.gain.value=14; vib.connect(vibG); vibG.connect(o1.frequency);
+    const mix=ctx.createGain(); mix.gain.value=1;
+    const og2=ctx.createGain(); og2.gain.value=0.25;
+    o1.connect(mix); o2.connect(og2); og2.connect(mix);
+    // two formants: closed "m" → bright open "eee" → rounded "ow"
+    const F1=ctx.createBiquadFilter(); F1.type='bandpass'; F1.Q.value=4;
+    const F2=ctx.createBiquadFilter(); F2.type='bandpass'; F2.Q.value=6;
+    F1.frequency.setValueAtTime(520,t);
+    F1.frequency.linearRampToValueAtTime(950,t+0.25);
+    F1.frequency.linearRampToValueAtTime(620,t+D);
+    F2.frequency.setValueAtTime(1500,t);
+    F2.frequency.linearRampToValueAtTime(2800,t+0.25);
+    F2.frequency.linearRampToValueAtTime(1100,t+D);
     const g=ctx.createGain();
     g.gain.setValueAtTime(0.0001,t);
-    g.gain.linearRampToValueAtTime(0.4,t+0.06);
-    g.gain.setValueAtTime(0.36,t+0.42);
-    g.gain.exponentialRampToValueAtTime(0.0001,t+0.72);
-    o.connect(bp); bp.connect(g); g.connect(master);
-    o.start(t); o.stop(t+0.74); vib.start(t); vib.stop(t+0.74);
+    g.gain.linearRampToValueAtTime(0.10,t+0.06);   // hummed "m"
+    g.gain.linearRampToValueAtTime(0.5,t+0.24);    // mouth opens
+    g.gain.setValueAtTime(0.45,t+0.5);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+D+0.08);
+    mix.connect(F1); mix.connect(F2);
+    const fg=ctx.createGain(); fg.gain.value=1.2;
+    F1.connect(fg); F2.connect(fg); fg.connect(g); g.connect(master);
+    o1.start(t); o2.start(t); vib.start(t);
+    o1.stop(t+D+0.1); o2.stop(t+D+0.1); vib.stop(t+D+0.1);
   }
 
   function toggleMute(){
@@ -2596,6 +2633,8 @@ document.addEventListener('visibilitychange',()=>{
   if(!window.Audio3D) return;
   if(document.hidden) Audio3D.suspend(); else Audio3D.resume();
 });
+// mobile browsers silently suspend the AudioContext — any tap wakes it back up
+document.addEventListener('pointerdown',()=>{ if(window.Audio3D) Audio3D.resume(); });
 </script>
 </body>
 </html>
