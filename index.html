@@ -426,6 +426,53 @@ const Audio3D = (function(){
     setTimeout(()=>splash(),35);
   }
 
+  /* fart: low sputtery sawtooth with a choppy amplitude wobble (the brrrt) */
+  function fart(){
+    if(!ctx||muted) return;
+    const t=now(), dur=0.5+Math.random()*0.18;
+    const o=ctx.createOscillator(); o.type='sawtooth';
+    o.frequency.setValueAtTime(95,t);
+    o.frequency.linearRampToValueAtTime(68,t+dur*0.25);
+    o.frequency.linearRampToValueAtTime(125,t+dur*0.6);
+    o.frequency.linearRampToValueAtTime(55,t+dur);
+    const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=850; lp.Q.value=4;
+    const g=ctx.createGain();
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.linearRampToValueAtTime(0.5,t+0.03);
+    g.gain.setValueAtTime(0.46,t+dur*0.8);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+dur+0.08);
+    // amplitude flutter that gives it the raspberry "brap"
+    const wob=ctx.createOscillator(); wob.type='square';
+    wob.frequency.setValueAtTime(20,t); wob.frequency.linearRampToValueAtTime(34,t+dur);
+    const wobG=ctx.createGain(); wobG.gain.value=0.45;
+    wob.connect(wobG); wobG.connect(g.gain);
+    o.connect(lp); lp.connect(g); g.connect(master);
+    o.start(t); o.stop(t+dur+0.1); wob.start(t); wob.stop(t+dur+0.1);
+  }
+
+  /* meow: a "me-ow" pitch arc with vibrato and a vowel formant */
+  function meow(){
+    if(!ctx||muted) return;
+    const t=now();
+    const o=ctx.createOscillator(); o.type='sawtooth';
+    o.frequency.setValueAtTime(500,t);
+    o.frequency.linearRampToValueAtTime(770,t+0.18);
+    o.frequency.linearRampToValueAtTime(420,t+0.62);
+    const vib=ctx.createOscillator(); vib.type='sine'; vib.frequency.value=13;
+    const vibG=ctx.createGain(); vibG.gain.value=18; vib.connect(vibG); vibG.connect(o.frequency);
+    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.Q.value=5;
+    bp.frequency.setValueAtTime(850,t);
+    bp.frequency.linearRampToValueAtTime(1550,t+0.2);
+    bp.frequency.linearRampToValueAtTime(780,t+0.62);
+    const g=ctx.createGain();
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.linearRampToValueAtTime(0.4,t+0.06);
+    g.gain.setValueAtTime(0.36,t+0.42);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+0.72);
+    o.connect(bp); bp.connect(g); g.connect(master);
+    o.start(t); o.stop(t+0.74); vib.start(t); vib.stop(t+0.74);
+  }
+
   function toggleMute(){
     muted=!muted;
     if(master&&ctx) master.gain.linearRampToValueAtTime(muted?0:0.9, ctx.currentTime+0.2);
@@ -449,7 +496,7 @@ const Audio3D = (function(){
     if(bedGain)    bedGain.gain.linearRampToValueAtTime(0, t+0.4);
     if(rumbleGain) rumbleGain.gain.linearRampToValueAtTime(0, t+0.4);
   }
-  return { init, setStage, splash, pee, plop, toggleMute, close, suspend, resume, quiet, get muted(){return muted;} };
+  return { init, setStage, splash, pee, plop, fart, meow, toggleMute, close, suspend, resume, quiet, get muted(){return muted;} };
 })();
 window.Audio3D=Audio3D;
 
@@ -1493,7 +1540,7 @@ function decorToilet(group, path, stage){
 
   splashState={ waterY, cz, water, waterGeo, baseWaterPos,
                 ripples, drops, dropGeo, dpos, dvel, DROPS, crown, figDropY, stream,
-                triggered:false, time:0, kind:stage.exitKind };
+                triggered:false, fartPlayed:false, time:0, kind:stage.exitKind };
 }
 
 function updateSplash(dt, t){
@@ -1996,7 +2043,8 @@ function animate(){
       travelT+=(dt/baseDur)*speedMul*nearEnd*stageSpeed;
       elapsedSeconds+=(dt/baseDur)*speedMul*nearEnd*stageSpeed*stage.secs;
       if(travelT>=1){ travelT=1;
-        if(stage.decor==="toilet"){ playing=false; document.getElementById('c-done').classList.add('on'); }
+        if(stage.decor==="toilet"){ playing=false; document.getElementById('c-done').classList.add('on');
+          if(window.Audio3D) Audio3D.meow(); }   // the cat greets you at the end
         else nextStage();
       }
     }
@@ -2028,6 +2076,7 @@ function animate(){
         s.stream.position.set(Math.sin(time*7)*0.06, (dropTop+bottom)/2, cz);
       } else if(foodAvatar){
         /* ---- SOLID: the poop drops in ---- */
+        if(s && !s.fartPlayed && t>0.04){ s.fartPlayed=true; if(window.Audio3D) Audio3D.fart(); } // brrrt on release
         const fallT=Math.min(t/0.60,1);            // lands as splash triggers (t>0.60)
         const y1=wy+0.5;
         foodAvatar.visible=!(s&&s.triggered);
