@@ -103,7 +103,12 @@
     border:1px solid var(--line); border-radius:16px; padding:16px 17px; backdrop-filter:blur(8px);
     box-shadow:0 18px 50px -22px rgba(0,0,0,.9); }
   .factcard .fl{ font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.22em;
-    text-transform:uppercase; color:var(--acid); margin-bottom:8px; }
+    text-transform:uppercase; color:var(--acid); margin-bottom:8px; padding-right:64px; }
+  .fc-hide{ position:absolute; top:11px; right:11px; pointer-events:auto;
+    font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase;
+    background:rgba(255,255,255,.05); color:var(--muted); border:1px solid var(--line); border-radius:999px;
+    padding:4px 9px; cursor:pointer; transition:.14s; }
+  .fc-hide:hover{ color:var(--text); border-color:var(--bio-dim); }
   .factcard .fx{ font-size:13.5px; line-height:1.62; color:var(--text); }
   .factcard .fx b{ color:var(--bio); font-weight:600; }
 
@@ -215,6 +220,7 @@
     </div>
     <div class="pmap" id="pmap"><div class="rail"></div></div>
     <div class="factcard">
+      <button class="fc-hide" id="c-hide" title="Hide info">✕ Hide</button>
       <div class="fl" id="fact-label">WHAT'S HAPPENING</div>
       <div class="fx" id="fact-text"></div>
     </div>
@@ -1241,16 +1247,63 @@ function makeCat(){
   tip.position.set(0.2,0.42,1.72); g.add(tip);
   return g;
 }
+/* a friendly blocky minifigure — kid-safe stand-in for the body's exit.
+   It hovers above the bowl and the waste drops from beneath it. Front faces +z. */
+function makeMinifig(host){
+  const g=new THREE.Group();
+  const isW = host && host.id==="woman";
+  const skin =new THREE.MeshStandardMaterial({color:0xf4c20d, roughness:0.42, metalness:0.0});
+  const shirt=new THREE.MeshStandardMaterial({color:isW?0xe8568f:0x2f7fd0, roughness:0.5});
+  const pants=new THREE.MeshStandardMaterial({color:0x394a5a, roughness:0.5});
+  const blackM=new THREE.MeshBasicMaterial({color:0x1a1a1a});
+
+  // legs (two blocks with a gap) + hips
+  [-0.28,0.28].forEach(x=>{
+    const leg=new THREE.Mesh(new THREE.BoxGeometry(0.5,1.5,0.62), pants);
+    leg.position.set(x,0.75,0); g.add(leg);
+  });
+  const hips=new THREE.Mesh(new THREE.BoxGeometry(1.16,0.5,0.66), pants);
+  hips.position.set(0,1.75,0); g.add(hips);
+
+  // torso — trapezoid, narrower at the shoulders
+  const torsoGeo=new THREE.BoxGeometry(1.22,1.6,0.72);
+  const tp=torsoGeo.attributes.position;
+  for(let i=0;i<tp.count;i++){ if(tp.getY(i)>0){ tp.setX(i,tp.getX(i)*0.8); tp.setZ(i,tp.getZ(i)*0.92); } }
+  tp.needsUpdate=true; torsoGeo.computeVertexNormals();
+  const torso=new THREE.Mesh(torsoGeo, shirt); torso.position.set(0,2.85,0); g.add(torso);
+
+  // arms angled down-forward + ring hands
+  [-1,1].forEach(s=>{
+    const arm=new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.22,1.15,14), shirt);
+    arm.position.set(s*0.74,2.78,0.16); arm.rotation.set(-0.5,0,s*0.34); g.add(arm);
+    const hand=new THREE.Mesh(new THREE.TorusGeometry(0.16,0.07,10,18), skin);
+    hand.position.set(s*0.96,2.18,0.6); hand.rotation.x=Math.PI/2; g.add(hand);
+  });
+
+  // head: cylinder + rounded top + stud
+  const head=new THREE.Mesh(new THREE.CylinderGeometry(0.5,0.5,0.95,28), skin);
+  head.position.set(0,4.2,0); g.add(head);
+  const headTop=new THREE.Mesh(new THREE.SphereGeometry(0.5,24,16,0,Math.PI*2,0,Math.PI*0.5), skin);
+  headTop.position.set(0,4.67,0); g.add(headTop);
+  const stud=new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.18,0.16,16), skin);
+  stud.position.set(0,4.94,0); g.add(stud);
+
+  // simple smiley face on the +z side
+  [-0.18,0.18].forEach(x=>{ const eye=new THREE.Mesh(new THREE.CircleGeometry(0.07,16), blackM);
+    eye.position.set(x,4.34,0.505); g.add(eye); });
+  const smile=new THREE.Mesh(new THREE.TorusGeometry(0.16,0.03,8,18,Math.PI), blackM);
+  smile.position.set(0,4.14,0.505); smile.rotation.z=Math.PI; g.add(smile);
+
+  // hair piece (differs by host)
+  const hairM=new THREE.MeshStandardMaterial({color:isW?0x6b3a14:0x241510, roughness:0.7});
+  const hair=new THREE.Mesh(new THREE.SphereGeometry(0.56,24,16,0,Math.PI*2,0,Math.PI*0.6), hairM);
+  hair.position.set(0,4.62,0); hair.scale.set(1.06,1.0,1.08); g.add(hair);
+  if(isW){ [-1,1].forEach(s=>{ const lock=new THREE.Mesh(new THREE.BoxGeometry(0.2,0.75,0.5), hairM);
+    lock.position.set(s*0.5,4.18,-0.04); g.add(lock); }); }
+  return g;
+}
 function decorToilet(group, path, stage){
   const isPee = stage.exitKind==="pee";
-  // short fleshy exit (the body opening above the bowl)
-  const exitCurve=new THREE.CatmullRomCurve3([
-    new THREE.Vector3(0,0.2,2.5), new THREE.Vector3(0,0,0.5),
-    new THREE.Vector3(0,-0.3,-2.5), new THREE.Vector3(0.15,-1,-5)
-  ]);
-  const exitGeo=new THREE.TubeGeometry(exitCurve,40,0.9,18,false);
-  displaceTube(exitGeo,0.1,2);
-  group.add(new THREE.Mesh(exitGeo, fleshMat(isPee?0xc98a7a:0x9a6a52,{rough:0.52})));
 
   scene.fog.color.set(0xb8c8ce); scene.fog.density=0.013;
   const sun=new THREE.DirectionalLight(0xfff4ec,0.7); sun.position.set(5,14,6); group.add(sun);
@@ -1291,6 +1344,14 @@ function decorToilet(group, path, stage){
   tlid.position.set(0,waterY+6.1,cz-4.0); group.add(tlid);
   const flushBtn=new THREE.Mesh(new THREE.CylinderGeometry(0.45,0.45,0.35,20), porc);
   flushBtn.position.set(0,waterY+6.5,cz-4.0); group.add(flushBtn);
+
+  // ---- friendly minifigure hovering over the bowl; waste drops from beneath it ----
+  const figY=waterY+3.4;
+  const figure=makeMinifig(chosenHost);
+  figure.position.set(0, figY, cz); figure.scale.setScalar(1.25); group.add(figure);
+  dynamicObjs.push({type:"hover", obj:figure, baseY:figY});
+  const figLight=new THREE.PointLight(0xfff2e2,0.55,26,2.0);
+  figLight.position.set(2,waterY+10,cz+7); group.add(figLight);
 
   // ---- water surface (egg-shaped to fit the bowl) ----
   const waterCol=isPee?0xe7d76a:0xbcd2d6;   // urine sits visibly yellow
@@ -1487,6 +1548,9 @@ function animateDecor(dt, time){
         const wave=Math.sin(time*2.8-r.userData.t0*12)*0.14;
         r.scale.set(1+wave, 1+wave, 1);
       });
+    } else if(o.type==="hover"){
+      o.obj.position.y=o.baseY+Math.sin(time*1.5)*0.28;
+      o.obj.rotation.y=Math.sin(time*0.5)*0.16;
     } else if(o.type==="sphincter"){
       const pulse=1+Math.sin(time*3.8+o.obj.userData.phase)*0.09;
       o.obj.scale.set(pulse, pulse, 1);
@@ -1868,15 +1932,15 @@ function animate(){
       // pull back far enough to frame the whole toilet AND the cat beside it;
       // widen further on narrow/portrait phones so nothing gets cropped
       const portrait = H()>=W();
-      const fov = portrait?74:60;
+      const fov = portrait?74:58;
       if(camera.fov!==fov){ camera.fov=fov; camera.updateProjectionMatrix(); }
-      camera.position.set(2.6, wy+9.5, cz + (portrait?29:21));
+      camera.position.set(2.6, wy+10, cz + (portrait?30:24));
       camera.up.set(0,1,0);
-      camera.lookAt(1.4, wy-3.4, cz);
+      camera.lookAt(1.4, wy-2.0, cz);
       camera.rotateY(yaw*0.4); camera.rotateX(pitch*0.4);
       if(foodAvatar){
         const fallT=Math.min(t/0.60,1);            // lands as splash triggers (t>0.60)
-        const y0=wy+11, y1=wy+0.5;
+        const y0=wy+3.2, y1=wy+0.5;                // emerges from beneath the figure
         foodAvatar.visible=!(s&&s.triggered);
         foodAvatar.position.set(0, y0+(y1-y0)*fallT, cz);
         foodAvatar.rotation.x+=dt*2.2; foodAvatar.rotation.y+=dt*1.4; // tumble as it falls
@@ -2084,12 +2148,15 @@ function wireControls(){
     this.classList.toggle('act',playing);
   };
   document.getElementById('c-skip').onclick=()=>{ if(!transitioning) nextStage(); };
-  document.getElementById('c-info').onclick=function(){
-    const hud=document.getElementById('hud');
-    const hidden=hud.classList.toggle('noinfo');
-    this.textContent=hidden?"ⓘ Show":"ⓘ Info";
-    this.classList.toggle('act',!hidden);
+  const setInfoHidden=(hidden)=>{
+    document.getElementById('hud').classList.toggle('noinfo',hidden);
+    const info=document.getElementById('c-info');
+    info.textContent=hidden?"ⓘ Show info":"ⓘ Info";
+    info.classList.toggle('act',!hidden);
   };
+  document.getElementById('c-info').onclick=()=>
+    setInfoHidden(!document.getElementById('hud').classList.contains('noinfo'));
+  document.getElementById('c-hide').onclick=()=>setInfoHidden(true);
   document.getElementById('c-speed').oninput=function(){ speedMul=parseFloat(this.value); };
   document.getElementById('c-sound').onclick=function(){
     const m=Audio3D.toggleMute();
