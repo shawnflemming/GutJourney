@@ -51,18 +51,20 @@
     text-transform:uppercase; color:var(--muted-2); margin:30px 0 12px; display:flex; gap:10px; align-items:baseline;}
   .step-label .n{ color:var(--bio); }
 
-  .grid-foods{ display:grid; grid-template-columns:repeat(auto-fill,minmax(116px,1fr)); gap:9px; }
-  .chip{ background:var(--panel); border:1px solid var(--line); border-radius:13px;
-    padding:13px 10px; cursor:pointer; text-align:center; transition:.16s ease;
-    display:flex; flex-direction:column; align-items:center; gap:7px; user-select:none; }
+  .cat-head{ font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:13px; color:var(--text);
+    margin:16px 0 9px; display:flex; align-items:center; gap:9px; }
+  .cat-head:first-child{ margin-top:2px; }
+  .cat-head .ch-ic{ font-size:15px; line-height:1; }
+  .cat-head .ch-ln{ flex:1; height:1px; background:var(--line); }
+  .grid-foods{ display:grid; grid-template-columns:repeat(auto-fill,minmax(84px,1fr)); gap:7px; }
+  .chip{ background:var(--panel); border:1px solid var(--line); border-radius:11px;
+    padding:9px 6px; cursor:pointer; text-align:center; transition:.16s ease;
+    display:flex; flex-direction:column; align-items:center; gap:4px; user-select:none; }
   .chip:hover{ border-color:var(--bio-dim); transform:translateY(-2px); }
-  .chip .emo{ font-size:27px; line-height:1; filter:saturate(1.1); }
-  .chip .nm{ font-size:12.5px; font-weight:500; }
-  .chip .ty{ font-family:'Space Mono',monospace; font-size:8.5px; letter-spacing:.16em;
-    text-transform:uppercase; color:var(--muted-2); }
+  .chip .emo{ font-size:19px; line-height:1; filter:saturate(1.1); }
+  .chip .nm{ font-size:11.5px; font-weight:500; }
   .chip[data-sel="1"]{ border-color:var(--bio); background:
       linear-gradient(180deg, rgba(57,230,200,.10), rgba(57,230,200,.02)); box-shadow:0 0 0 1px rgba(57,230,200,.25) inset; }
-  .chip[data-sel="1"] .ty{ color:var(--bio); }
 
   .two{ display:grid; grid-template-columns:1fr 1fr; gap:12px; max-width:520px; }
   .host{ background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px;
@@ -87,6 +89,7 @@
 
   #hud{ position:fixed; inset:0; z-index:10; pointer-events:none; display:none; }
   #hud.on{ display:block; }
+  #hud.noinfo .factcard, #hud.noinfo .organ-sub{ display:none; }
 
   .status{ position:absolute; top:18px; left:18px; }
   .organ-tag{ font-family:'Space Mono',monospace; font-size:11px; letter-spacing:.26em;
@@ -122,7 +125,7 @@
   .pmap .rail{ position:absolute; right:4px; top:12px; bottom:12px; width:1px; background:var(--line); z-index:-1; }
 
   .controls{ position:absolute; bottom:18px; left:50%; transform:translateX(-50%);
-    display:flex; align-items:center; gap:10px; pointer-events:auto;
+    display:flex; align-items:center; gap:10px; pointer-events:auto; max-width:calc(100% - 16px);
     background:rgba(8,11,16,.78); border:1px solid var(--line); border-radius:999px; padding:7px 9px; backdrop-filter:blur(8px); }
   .cbtn{ font-family:'Space Mono',monospace; font-size:11px; letter-spacing:.12em; text-transform:uppercase;
     background:transparent; color:var(--muted); border:1px solid transparent; border-radius:999px;
@@ -154,11 +157,16 @@
 
   @media (max-width:720px){
     .pmap{ display:none; }
-    .readouts{ top:auto; bottom:84px; right:12px; flex-direction:row; }
+    .readouts{ top:auto; bottom:calc(70px + env(safe-area-inset-bottom)); right:12px; flex-direction:row; }
     .ro{ min-width:0; padding:7px 10px; } .ro .v{ font-size:15px; }
-    .factcard{ bottom:84px; left:12px; width:min(330px,calc(100% - 24px)); }
+    .factcard{ bottom:calc(118px + env(safe-area-inset-bottom)); left:12px; width:min(330px,calc(100% - 24px)); }
     .status{ top:12px; left:12px; }
     .two{ grid-template-columns:1fr; }
+    .controls{ bottom:calc(12px + env(safe-area-inset-bottom)); gap:3px; padding:5px 6px; }
+    .cbtn{ padding:7px 8px; font-size:10px; letter-spacing:.04em; }
+    .speed{ gap:5px; padding:0 4px; }
+    .speed .spd-l{ display:none; }
+    .speed input{ width:52px; }
   }
   .fade{ transition:opacity .5s ease; }
 </style>
@@ -183,7 +191,7 @@
         Drag to look around the wet, living interior as you travel.</p>
 
       <div class="step-label"><span class="n">01</span> Pick a food or drink</div>
-      <div class="grid-foods" id="foods"></div>
+      <div id="foods"></div>
 
       <div class="step-label"><span class="n">02</span> Pick a sex</div>
       <div class="two" id="hosts"></div>
@@ -213,9 +221,10 @@
     <div class="hint" id="hint">Drag to look around · sound on · you travel automatically</div>
     <div class="controls">
       <button class="cbtn act" id="c-play">❚❚ Pause</button>
-      <div class="speed">SPEED <input type="range" id="c-speed" min="0.3" max="2.4" step="0.1" value="1"></div>
+      <div class="speed"><span class="spd-l">SPEED</span> <input type="range" id="c-speed" min="0.3" max="2.4" step="0.1" value="1"></div>
       <button class="cbtn act" id="c-sound">♪ Sound</button>
-      <button class="cbtn" id="c-skip">Skip organ ▸</button>
+      <button class="cbtn act" id="c-info">ⓘ Info</button>
+      <button class="cbtn" id="c-skip">Skip ▸</button>
     </div>
   </div>
 
@@ -1158,54 +1167,78 @@ let splashState=null;
 /* a sitting black cat — origin at its feet, facing +Z */
 function makeCat(){
   const g=new THREE.Group();
-  const fur=new THREE.MeshStandardMaterial({color:0x0c0c11, roughness:0.92, metalness:0.0});
-  // sitting rear haunches
-  const haunch=new THREE.Mesh(new THREE.SphereGeometry(1.15,24,18), fur);
-  haunch.scale.set(1.0,0.95,1.18); haunch.position.set(0,1.05,-0.2); g.add(haunch);
-  // upright chest/body
-  const body=new THREE.Mesh(new THREE.SphereGeometry(0.85,24,18), fur);
-  body.scale.set(0.92,1.3,0.9); body.position.set(0,1.75,0.45); g.add(body);
-  // head
-  const head=new THREE.Mesh(new THREE.SphereGeometry(0.62,24,18), fur);
-  head.scale.set(1.06,0.96,1.0); head.position.set(0,2.8,0.62); g.add(head);
-  const muzzle=new THREE.Mesh(new THREE.SphereGeometry(0.3,16,12), fur);
-  muzzle.scale.set(1,0.7,1); muzzle.position.set(0,2.58,1.08); g.add(muzzle);
-  // ears + pink inner
-  const innerMat=new THREE.MeshStandardMaterial({color:0x3a2230, roughness:0.9});
-  [-0.32,0.32].forEach(x=>{
-    const ear=new THREE.Mesh(new THREE.ConeGeometry(0.27,0.55,4), fur);
-    ear.position.set(x,3.32,0.55); ear.rotation.y=Math.PI/4; g.add(ear);
-    const inner=new THREE.Mesh(new THREE.ConeGeometry(0.13,0.32,4), innerMat);
-    inner.position.set(x,3.28,0.62); inner.rotation.y=Math.PI/4; g.add(inner);
+  // slightly sheeny short black fur, plus a darker tone for depth in the recesses
+  const fur =new THREE.MeshStandardMaterial({color:0x1a1a20, roughness:0.74, metalness:0.06});
+  const furD=new THREE.MeshStandardMaterial({color:0x0e0e13, roughness:0.82, metalness:0.0});
+
+  // --- seated lower body: a wide egg that narrows as it rises ---
+  const base=new THREE.Mesh(new THREE.SphereGeometry(1.18,32,26), furD);
+  base.scale.set(1.04,1.12,1.22); base.position.set(0,1.12,-0.12); g.add(base);
+  // chest/belly continuing upward, leaning very slightly forward
+  const chest=new THREE.Mesh(new THREE.SphereGeometry(0.8,32,26), fur);
+  chest.scale.set(0.96,1.26,0.94); chest.position.set(0,2.05,0.42); g.add(chest);
+  // neck blends head into chest so there's no "stacked balls" gap
+  const neck=new THREE.Mesh(new THREE.SphereGeometry(0.5,24,20), fur);
+  neck.scale.set(0.92,0.92,0.92); neck.position.set(0,2.74,0.52); g.add(neck);
+
+  // --- head: rounded, with cheeks + muzzle for a real feline face ---
+  const head=new THREE.Mesh(new THREE.SphereGeometry(0.6,36,30), fur);
+  head.scale.set(1.05,0.97,1.02); head.position.set(0,3.24,0.62); g.add(head);
+  [-1,1].forEach(s=>{ const cheek=new THREE.Mesh(new THREE.SphereGeometry(0.27,18,16), fur);
+    cheek.scale.set(0.95,0.82,0.9); cheek.position.set(s*0.27,3.04,0.92); g.add(cheek); });
+  const muzzle=new THREE.Mesh(new THREE.SphereGeometry(0.22,20,16), fur);
+  muzzle.scale.set(1.25,0.78,1.0); muzzle.position.set(0,2.97,1.06); g.add(muzzle);
+
+  // --- ears: tilted outward, with pink inner ---
+  const innerMat=new THREE.MeshStandardMaterial({color:0x6e4452, roughness:0.85});
+  [-1,1].forEach(s=>{
+    const ear=new THREE.Mesh(new THREE.ConeGeometry(0.27,0.62,20), fur);
+    ear.position.set(s*0.36,3.78,0.5); ear.rotation.set(0.18,0,s*-0.34); g.add(ear);
+    const inEar=new THREE.Mesh(new THREE.ConeGeometry(0.14,0.38,18), innerMat);
+    inEar.position.set(s*0.35,3.74,0.57); inEar.rotation.set(0.22,0,s*-0.34); g.add(inEar);
   });
-  // glowing eyes so it clearly "watches"
-  const eyeMat=new THREE.MeshStandardMaterial({color:0xcfe24a, emissive:0xb6d22a, emissiveIntensity:1.3, roughness:0.3});
-  const pupMat=new THREE.MeshBasicMaterial({color:0x0a0a0a});
-  [-0.24,0.24].forEach(x=>{
-    const eye=new THREE.Mesh(new THREE.SphereGeometry(0.13,16,12), eyeMat);
-    eye.position.set(x,2.86,1.14); g.add(eye);
-    const pup=new THREE.Mesh(new THREE.SphereGeometry(0.055,10,8), pupMat);
-    pup.position.set(x,2.86,1.25); pup.scale.x=0.4; g.add(pup);
+
+  // --- almond eyes that glow, with vertical slit pupils ---
+  const eyeMat=new THREE.MeshStandardMaterial({color:0xc7d83f, emissive:0xa6c12c, emissiveIntensity:1.2, roughness:0.22});
+  const pupMat=new THREE.MeshBasicMaterial({color:0x07120a});
+  [-1,1].forEach(s=>{
+    const eye=new THREE.Mesh(new THREE.SphereGeometry(0.15,18,16), eyeMat);
+    eye.scale.set(1.15,0.82,0.7); eye.position.set(s*0.24,3.3,1.05); g.add(eye);
+    const pup=new THREE.Mesh(new THREE.SphereGeometry(0.12,12,10), pupMat);
+    pup.scale.set(0.3,0.92,0.6); pup.position.set(s*0.24,3.3,1.17); g.add(pup);
   });
-  const nose=new THREE.Mesh(new THREE.SphereGeometry(0.075,10,8),
-    new THREE.MeshStandardMaterial({color:0x7a3a48, roughness:0.6}));
-  nose.position.set(0,2.52,1.34); g.add(nose);
-  // front legs + paws
-  [-0.32,0.32].forEach(x=>{
-    const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.24,1.45,14), fur);
-    leg.position.set(x,0.72,0.98); g.add(leg);
-    const paw=new THREE.Mesh(new THREE.SphereGeometry(0.28,14,12), fur);
-    paw.scale.set(1,0.7,1.25); paw.position.set(x,0.12,1.2); g.add(paw);
+  // pink triangular nose
+  const nose=new THREE.Mesh(new THREE.ConeGeometry(0.085,0.11,4),
+    new THREE.MeshStandardMaterial({color:0xc97a86, roughness:0.5}));
+  nose.rotation.x=Math.PI; nose.rotation.y=Math.PI/4; nose.position.set(0,3.0,1.24); g.add(nose);
+
+  // --- whiskers: a fan of thin pale strands either side of the muzzle ---
+  const wMat=new THREE.MeshBasicMaterial({color:0xcfcfc6, transparent:true, opacity:0.7});
+  [-1,1].forEach(s=>{
+    [-0.06,0.04,0.14].forEach((yo,k)=>{
+      const wh=new THREE.Mesh(new THREE.CylinderGeometry(0.006,0.006,0.95,4), wMat);
+      wh.position.set(s*0.46,2.94+yo,1.06);
+      wh.rotation.z=Math.PI/2; wh.rotation.y=s*(0.34-k*0.14); g.add(wh);
+    });
   });
-  // tail curling around the front
+
+  // --- slim front legs + tidy paws ---
+  [-1,1].forEach(s=>{
+    const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.17,0.2,1.5,16), fur);
+    leg.position.set(s*0.34,0.78,1.04); g.add(leg);
+    const paw=new THREE.Mesh(new THREE.SphereGeometry(0.26,16,14), fur);
+    paw.scale.set(1,0.68,1.3); paw.position.set(s*0.34,0.12,1.32); g.add(paw);
+  });
+
+  // --- tail curling around the front, tucked by the paws ---
   const tailCurve=new THREE.CatmullRomCurve3([
-    new THREE.Vector3(0.2,0.6,-1.0), new THREE.Vector3(1.15,0.4,-0.55),
-    new THREE.Vector3(1.45,0.3,0.45), new THREE.Vector3(1.0,0.25,1.25),
-    new THREE.Vector3(0.3,0.22,1.55)
+    new THREE.Vector3(0.25,0.55,-1.0), new THREE.Vector3(1.2,0.36,-0.4),
+    new THREE.Vector3(1.5,0.3,0.6),    new THREE.Vector3(1.0,0.28,1.42),
+    new THREE.Vector3(0.2,0.42,1.72)
   ]);
-  g.add(new THREE.Mesh(new THREE.TubeGeometry(tailCurve,40,0.2,12,false), fur));
-  const tip=new THREE.Mesh(new THREE.SphereGeometry(0.21,12,10), fur);
-  tip.position.set(0.3,0.22,1.55); g.add(tip);
+  g.add(new THREE.Mesh(new THREE.TubeGeometry(tailCurve,48,0.19,14,false), fur));
+  const tip=new THREE.Mesh(new THREE.SphereGeometry(0.2,14,12), fur);
+  tip.position.set(0.2,0.42,1.72); g.add(tip);
   return g;
 }
 function decorToilet(group, path, stage){
@@ -1654,102 +1687,129 @@ function fm(hex,opts={}){
     side:opts.side||THREE.FrontSide
   });
 }
-function disc(r,h,seg,mat){ return new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,seg||28),mat); }
+function disc(r,h,seg,mat){ return new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,seg||32),mat); }
 function makeFoodModel(food){
   const g=new THREE.Group();
   const name=food?food.name:"Apple";
   switch(name){
     case "Apple": {
-      const body=new THREE.Mesh(new THREE.SphereGeometry(0.72,24,20), fm(0xcc2b22,{cc:0.7,r:0.35}));
-      body.scale.set(1,0.9,1);
-      // top + bottom dimple
-      const d=new THREE.Mesh(new THREE.SphereGeometry(0.18,12,10), fm(0x7a1610,{r:0.8}));
-      d.position.y=0.6; d.scale.y=0.5; g.add(body,d);
-      const stem=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.05,0.28,8), fm(0x5a3a1a,{r:0.9}));
-      stem.position.y=0.74; g.add(stem);
-      const leaf=new THREE.Mesh(new THREE.SphereGeometry(0.16,10,8), fm(0x4f9a3a,{r:0.7}));
-      leaf.scale.set(1,0.3,0.55); leaf.position.set(0.18,0.8,0); leaf.rotation.z=-0.5; g.add(leaf);
+      // rounder, glossier body with a real top dimple and waxy sheen
+      const body=new THREE.Mesh(new THREE.SphereGeometry(0.74,36,30), fm(0xd0241c,{cc:0.85,ccr:0.12,r:0.3}));
+      body.scale.set(1.02,0.92,1.02);
+      const pos=body.geometry.attributes.position, v=new THREE.Vector3();
+      for(let i=0;i<pos.count;i++){ v.fromBufferAttribute(pos,i);  // press in top & bottom
+        const f=Math.max(0,Math.abs(v.y)-0.45)*1.1; v.y-=Math.sign(v.y)*f*v.y*v.y; pos.setXYZ(i,v.x,v.y,v.z); }
+      pos.needsUpdate=true; body.geometry.computeVertexNormals(); g.add(body);
+      const stem=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.05,0.3,8), fm(0x5a3a1a,{r:0.9}));
+      stem.position.y=0.62; stem.rotation.z=0.12; g.add(stem);
+      const leaf=new THREE.Mesh(new THREE.SphereGeometry(0.17,12,10), fm(0x4f9a3a,{r:0.6}));
+      leaf.scale.set(1,0.22,0.5); leaf.position.set(0.2,0.68,0); leaf.rotation.z=-0.6; g.add(leaf);
       break; }
     case "Burger": {
-      const bun=fm(0xd0913f,{r:0.7});
-      const bot=disc(0.7,0.26,28,bun); bot.position.y=-0.42; g.add(bot);
-      const patty=disc(0.76,0.24,28,fm(0x4f2a18,{r:0.85})); patty.position.y=-0.18; g.add(patty);
-      const cheese=new THREE.Mesh(new THREE.BoxGeometry(1.32,0.07,1.32), fm(0xf2b53a,{r:0.5}));
-      cheese.position.y=-0.02; cheese.rotation.y=Math.PI/4; g.add(cheese);
-      const let_=disc(0.82,0.1,28,fm(0x73b23c,{r:0.9})); let_.position.y=0.06; g.add(let_);
-      const top=new THREE.Mesh(new THREE.SphereGeometry(0.72,28,16,0,Math.PI*2,0,Math.PI*0.5), bun);
-      top.scale.y=0.82; top.position.y=0.12; g.add(top);
-      for(let i=0;i<7;i++){ const s=new THREE.Mesh(new THREE.SphereGeometry(0.05,8,6), fm(0xf3e2b0,{r:0.6}));
-        const a=i/7*Math.PI*2; s.position.set(Math.cos(a)*0.34,0.5,Math.sin(a)*0.34); g.add(s); }
+      const bun=fm(0xd9923a,{r:0.55,cc:0.2});
+      const bot=new THREE.Mesh(new THREE.SphereGeometry(0.74,32,20,0,Math.PI*2,Math.PI*0.5,Math.PI*0.5), bun);
+      bot.scale.y=0.5; bot.position.y=-0.36; g.add(bot);
+      const patty=disc(0.78,0.26,36,fm(0x4a2716,{r:0.85})); patty.geometry=noisyBlob(patty.geometry,3,0.03);
+      patty.position.y=-0.12; g.add(patty);
+      const cheese=new THREE.Mesh(new THREE.BoxGeometry(1.36,0.06,1.36), fm(0xf4b733,{r:0.45,cc:0.4}));
+      cheese.position.y=0.04; cheese.rotation.y=Math.PI/4; g.add(cheese);
+      const let_=new THREE.Mesh(noisyBlob(new THREE.CylinderGeometry(0.84,0.84,0.12,40),6,0.06), fm(0x76ba3a,{r:0.85}));
+      let_.position.y=0.12; g.add(let_);
+      const top=new THREE.Mesh(new THREE.SphereGeometry(0.76,36,22,0,Math.PI*2,0,Math.PI*0.55), bun);
+      top.scale.y=0.78; top.position.y=0.18; g.add(top);
+      for(let i=0;i<9;i++){ const s=new THREE.Mesh(new THREE.SphereGeometry(0.045,8,6), fm(0xf6e6bc,{r:0.6}));
+        const a=i/9*Math.PI*2, rr=0.18+(i%2)*0.2; s.position.set(Math.cos(a)*rr,0.52,Math.sin(a)*rr); g.add(s); }
       break; }
     case "Broccoli": {
-      const stalk=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.24,0.55,12), fm(0xbcd089,{r:0.8}));
-      stalk.position.y=-0.42; g.add(stalk);
-      const crown=fm(0x35702a,{r:0.95});
-      for(let i=0;i<9;i++){ const r=0.2+Math.random()*0.08;
-        const b=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(r,10,8),6,0.18), crown);
-        const a=i/9*Math.PI*2, rad=0.28+Math.random()*0.14;
-        b.position.set(Math.cos(a)*rad,0.18+Math.random()*0.22,Math.sin(a)*rad); g.add(b); }
-      g.add(new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.26,12,10),6,0.18), crown));
+      const stalk=new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.26,0.6,16), fm(0xc2d693,{r:0.8}));
+      stalk.position.y=-0.46; g.add(stalk);
+      for(let i=0;i<4;i++){ const sub=new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.1,0.34,10), fm(0xb8cf86,{r:0.8}));
+        const a=i/4*Math.PI*2; sub.position.set(Math.cos(a)*0.18,-0.18,Math.sin(a)*0.18); sub.rotation.set(Math.cos(a)*0.4,0,-Math.sin(a)*0.4); g.add(sub); }
+      const crown=fm(0x2f6a26,{r:0.95}), crown2=fm(0x3c8030,{r:0.95});
+      for(let i=0;i<16;i++){ const r=0.18+Math.random()*0.1;
+        const b=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(r,10,8),7,0.22), i%2?crown:crown2);
+        const a=Math.random()*Math.PI*2, rad=Math.random()*0.34;
+        b.position.set(Math.cos(a)*rad,0.16+Math.random()*0.3,Math.sin(a)*rad); g.add(b); }
       break; }
     case "Pizza": {
       const ang=Math.PI/3.0;
-      const base=new THREE.Mesh(new THREE.CylinderGeometry(1.15,1.15,0.1,40,1,false,0,ang), fm(0xe0a945,{r:0.7}));
-      const sauce=new THREE.Mesh(new THREE.CylinderGeometry(1.0,1.0,0.06,40,1,false,0.06,ang-0.12), fm(0xb13a22,{r:0.6}));
+      const base=new THREE.Mesh(new THREE.CylinderGeometry(1.2,1.2,0.1,48,1,false,0,ang), fm(0xe5b258,{r:0.7}));
+      const sauce=new THREE.Mesh(new THREE.CylinderGeometry(1.04,1.04,0.05,48,1,false,0.06,ang-0.12), fm(0xb4361f,{r:0.55}));
       sauce.position.y=0.07;
-      const cheese=new THREE.Mesh(new THREE.CylinderGeometry(1.0,1.0,0.05,40,1,false,0.06,ang-0.12), fm(0xf0c14a,{r:0.5}));
-      cheese.position.y=0.12;
+      const cheese=new THREE.Mesh(noisyBlob(new THREE.CylinderGeometry(1.02,1.02,0.07,48,1,false,0.06,ang-0.12),5,0.02), fm(0xf2c84e,{r:0.5,cc:0.3}));
+      cheese.position.y=0.11;
       g.add(base,sauce,cheese);
-      // crust ridge at wide edge
-      const crust=new THREE.Mesh(new THREE.TorusGeometry(1.1,0.12,10,24,ang), fm(0xcf9a45,{r:0.75}));
+      const crust=new THREE.Mesh(new THREE.TorusGeometry(1.13,0.14,12,28,ang), fm(0xd2a04a,{r:0.7}));
       crust.rotation.x=Math.PI/2; crust.position.y=0.05; g.add(crust);
-      for(let i=0;i<3;i++){ const p=new THREE.Mesh(disc(0.13,0.04,16,fm(0x9b2f22,{r:0.5})).geometry, fm(0x9b2f22,{r:0.5}));
-        p.position.set(0.4+i*0.15,0.16, 0.3+ (i*0.18)); g.add(p); }
-      g.rotation.z=-0.15;
+      // pepperoni discs scattered on top
+      const pep=fm(0xa6321f,{r:0.45,cc:0.3});
+      [[0.42,0.18],[0.6,0.42],[0.34,0.5],[0.72,0.12]].forEach(([x,z])=>{
+        const p=new THREE.Mesh(new THREE.CylinderGeometry(0.14,0.14,0.05,18), pep);
+        p.position.set(x,0.17,z); g.add(p); });
+      g.rotation.z=-0.12;
       break; }
     case "Sushi": {
-      const rice=new THREE.Mesh(new THREE.BoxGeometry(0.8,0.5,1.15), fm(0xf2efe6,{r:0.7}));
-      rice.geometry=noisyBlob(rice.geometry,5,0.04);
-      const fish=new THREE.Mesh(new THREE.BoxGeometry(0.86,0.16,1.2), fm(0xe8915a,{r:0.35,cc:0.5}));
-      fish.position.y=0.32;
-      const nori=new THREE.Mesh(new THREE.BoxGeometry(0.84,0.58,0.16), fm(0x26352a,{r:0.6}));
-      g.add(rice,fish,nori);
+      // nigiri: rounded rice pillow under a draped salmon slice with a nori band
+      const rice=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.55,28,22),6,0.03), fm(0xf4f1e8,{r:0.65}));
+      rice.scale.set(1.0,0.62,1.5); rice.position.y=-0.1; g.add(rice);
+      const fish=new THREE.Mesh(new THREE.SphereGeometry(0.56,28,18,0,Math.PI*2,0,Math.PI*0.5), fm(0xe87a4a,{r:0.32,cc:0.55,ccr:0.2}));
+      fish.scale.set(1.02,0.4,1.55); fish.position.y=0.2; g.add(fish);
+      for(let i=0;i<3;i++){ const stripe=new THREE.Mesh(new THREE.BoxGeometry(1.04,0.012,0.07), fm(0xf6cdb2,{r:0.4}));
+        stripe.position.set(0,0.34,-0.4+i*0.4); g.add(stripe); }
+      const nori=new THREE.Mesh(new THREE.BoxGeometry(0.32,0.7,1.66), fm(0x1e2a22,{r:0.55}));
+      g.add(nori);
       break; }
     case "Chocolate": {
-      const bar=new THREE.Mesh(new THREE.BoxGeometry(1.35,0.3,0.95), fm(0x3a2113,{cc:0.5,r:0.35}));
+      const bar=new THREE.Mesh(new THREE.BoxGeometry(1.4,0.26,1.0), fm(0x3a2113,{cc:0.7,ccr:0.1,r:0.28}));
       g.add(bar);
-      for(let x=-1;x<=1;x++) for(let z=-1;z<=1;z+=2){
-        const sq=new THREE.Mesh(new THREE.BoxGeometry(0.34,0.08,0.34), fm(0x4a2c1a,{cc:0.5,r:0.35}));
-        sq.position.set(x*0.42,0.17,z*0.22); g.add(sq); }
+      for(let x=-1.5;x<=1.5;x++) for(let z=-0.5;z<=0.5;z++){
+        const sq=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.1,0.42), fm(0x4d2e1b,{cc:0.7,ccr:0.1,r:0.28}));
+        sq.position.set(x*0.33,0.16,z*0.46); g.add(sq); }
       break; }
     case "Bread": {
-      const loaf=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.72,22,18),3,0.07), fm(0xcaa069,{r:0.7}));
-      loaf.scale.set(1.25,0.78,0.92); g.add(loaf);
-      const top=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.6,18,14),3,0.07), fm(0xb07e44,{r:0.65}));
-      top.scale.set(1.15,0.5,0.8); top.position.y=0.22; g.add(top);
+      const loaf=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.74,26,20),3,0.06), fm(0xc69b5f,{r:0.65,cc:0.15}));
+      loaf.scale.set(1.32,0.82,0.92); g.add(loaf);
+      const dome=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.62,22,16),3,0.06), fm(0xb07e44,{r:0.6}));
+      dome.scale.set(1.18,0.5,0.78); dome.position.y=0.22; g.add(dome);
+      // diagonal scored slashes on top
+      for(let i=-1;i<=1;i++){ const slash=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.04,0.05), fm(0x8a5e30,{r:0.8}));
+        slash.position.set(i*0.34,0.5,0); slash.rotation.set(0,0,0.5); slash.rotation.y=0.6; g.add(slash); }
       break; }
     case "Taco": {
-      const shell=new THREE.Mesh(new THREE.CylinderGeometry(0.7,0.7,1.1,28,1,true,0,Math.PI), fm(0xe3b24e,{r:0.7,side:THREE.DoubleSide}));
+      const shell=new THREE.Mesh(new THREE.CylinderGeometry(0.72,0.72,1.15,32,1,true,0,Math.PI), fm(0xe6b450,{r:0.65,cc:0.15,side:THREE.DoubleSide}));
       shell.rotation.z=Math.PI/2; shell.rotation.y=Math.PI/2; g.add(shell);
-      const fill=new THREE.Mesh(new THREE.BoxGeometry(1.0,0.3,0.5), fm(0x5e3322,{r:0.8})); fill.position.y=-0.1; g.add(fill);
-      const let_=new THREE.Mesh(new THREE.BoxGeometry(1.05,0.12,0.55), fm(0x6fae3a,{r:0.9})); let_.position.y=0.06; g.add(let_);
-      const tom=new THREE.Mesh(new THREE.BoxGeometry(0.9,0.1,0.4), fm(0xc0392b,{r:0.7})); tom.position.y=0.14; g.add(tom);
+      const meat=new THREE.Mesh(noisyBlob(new THREE.BoxGeometry(1.0,0.34,0.55,4,2,3),4,0.05), fm(0x5e3322,{r:0.8})); meat.position.y=-0.12; g.add(meat);
+      const let_=new THREE.Mesh(noisyBlob(new THREE.BoxGeometry(1.06,0.14,0.6,5,1,3),6,0.06), fm(0x6fae3a,{r:0.85})); let_.position.y=0.08; g.add(let_);
+      for(let i=0;i<5;i++){ const tom=new THREE.Mesh(new THREE.BoxGeometry(0.14,0.14,0.14), fm(0xc0392b,{r:0.55}));
+        tom.position.set(-0.4+i*0.2,0.16,(i%2?0.12:-0.12)); g.add(tom); }
+      const cheese=new THREE.Mesh(new THREE.BoxGeometry(1.0,0.04,0.5), fm(0xf2c84e,{r:0.5})); cheese.position.y=0.2; g.add(cheese);
       break; }
     case "Steak": {
-      const meat=new THREE.Mesh(noisyBlob(new THREE.BoxGeometry(1.25,0.36,0.95,6,2,5),2.0,0.05), fm(0x6e3a26,{r:0.7}));
+      const meat=new THREE.Mesh(noisyBlob(new THREE.BoxGeometry(1.3,0.38,1.0,8,3,7),2.2,0.05), fm(0x7a3d27,{r:0.62,cc:0.15}));
       g.add(meat);
-      const fat=new THREE.Mesh(new THREE.TorusGeometry(0.55,0.06,8,28), fm(0xd9b89a,{r:0.7}));
-      fat.rotation.x=Math.PI/2; fat.scale.set(1.05,1,0.78); fat.position.y=0.0; g.add(fat);
-      for(let i=-1;i<=1;i++){ const sear=new THREE.Mesh(new THREE.BoxGeometry(1.0,0.02,0.06), fm(0x35201a,{r:0.8}));
-        sear.position.set(0,0.19,i*0.22); sear.rotation.y=0.5; g.add(sear); }
+      const fat=new THREE.Mesh(new THREE.TorusGeometry(0.58,0.07,10,32), fm(0xe2c4a6,{r:0.6}));
+      fat.rotation.x=Math.PI/2; fat.scale.set(1.05,1,0.74); fat.position.y=0.02; g.add(fat);
+      // cross-hatched grill marks (charred)
+      const char=fm(0x2c1812,{r:0.85});
+      for(let i=-1;i<=1;i++){ const a=new THREE.Mesh(new THREE.BoxGeometry(1.18,0.02,0.07), char);
+        a.position.set(0,0.2,i*0.26); a.rotation.y=0.5; g.add(a);
+        const b=new THREE.Mesh(new THREE.BoxGeometry(0.07,0.02,0.9), char);
+        b.position.set(i*0.34,0.2,0); b.rotation.y=0.5; g.add(b); }
       break; }
     case "Pasta": {
-      const mound=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.72,20,16),4,0.13), fm(0xe6d29a,{r:0.7}));
-      mound.scale.y=0.66; g.add(mound);
-      const sauce=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.5,16,12),5,0.16), fm(0xb6391f,{r:0.6}));
-      sauce.scale.y=0.45; sauce.position.y=0.28; g.add(sauce);
-      const ball=new THREE.Mesh(new THREE.SphereGeometry(0.16,12,10), fm(0x6e3a24,{r:0.7}));
-      ball.position.set(0.18,0.42,0.1); g.add(ball);
+      const bowl=new THREE.Mesh(new THREE.SphereGeometry(0.78,28,18,0,Math.PI*2,Math.PI*0.55,Math.PI*0.45), fm(0xf2efe6,{r:0.5,cc:0.3}));
+      bowl.scale.y=0.7; bowl.position.y=-0.18; g.add(bowl);
+      const mound=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.66,22,18),5,0.1), fm(0xe9d49a,{r:0.7}));
+      mound.scale.y=0.62; mound.position.y=0.02; g.add(mound);
+      // a few noodle loops on top
+      const noodle=fm(0xedd79e,{r:0.6});
+      for(let i=0;i<4;i++){ const a=i/4*Math.PI*2;
+        const t=new THREE.Mesh(new THREE.TorusGeometry(0.2+Math.random()*0.08,0.045,8,18), noodle);
+        t.position.set(Math.cos(a)*0.22,0.16,Math.sin(a)*0.22); t.rotation.set(Math.random(),Math.random(),Math.random()); g.add(t); }
+      const sauce=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.46,16,12),5,0.14), fm(0xb6391f,{r:0.55}));
+      sauce.scale.y=0.4; sauce.position.y=0.24; g.add(sauce);
+      [[0.16,0.1],[-0.14,-0.08]].forEach(([x,z])=>{ const ball=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.17,12,10),3,0.04), fm(0x6e3a24,{r:0.7}));
+        ball.position.set(x,0.34,z); g.add(ball); });
       break; }
     default: return makeBolus(food?food.color:0xc0392b);
   }
@@ -1805,10 +1865,14 @@ function animate(){
       /* ---- TOILET: watch the food drop into the bowl from outside ---- */
       const s=splashState;
       const wy=s?s.waterY:-10, cz=s?s.cz:-13;
-      if(camera.fov!==56){ camera.fov=56; camera.updateProjectionMatrix(); }
-      camera.position.set(0, wy+6.5, cz+12);
+      // pull back far enough to frame the whole toilet AND the cat beside it;
+      // widen further on narrow/portrait phones so nothing gets cropped
+      const portrait = H()>=W();
+      const fov = portrait?74:60;
+      if(camera.fov!==fov){ camera.fov=fov; camera.updateProjectionMatrix(); }
+      camera.position.set(2.6, wy+9.5, cz + (portrait?29:21));
       camera.up.set(0,1,0);
-      camera.lookAt(0, wy+0.6, cz);
+      camera.lookAt(1.4, wy-3.4, cz);
       camera.rotateY(yaw*0.4); camera.rotateX(pitch*0.4);
       if(foodAvatar){
         const fallT=Math.min(t/0.60,1);            // lands as splash triggers (t>0.60)
@@ -1925,14 +1989,24 @@ function updateReadouts(stage){
    ============================================================ */
 function buildStartUI(){
   const fc=document.getElementById('foods');
-  FOODS.forEach((f,i)=>{
-    const el=document.createElement('div'); el.className='chip'; el.dataset.i=i;
-    el.innerHTML=`<span class="emo">${f.emoji}</span><span class="nm">${f.name}</span><span class="ty">${f.type}</span>`;
-    el.onclick=()=>{ chosenFood=f;
-      document.querySelectorAll('#foods .chip').forEach(c=>c.dataset.sel="0");
-      el.dataset.sel="1"; refreshLaunch(); };
-    fc.appendChild(el);
-  });
+  const section=(title,icon,type)=>{
+    const h=document.createElement('div'); h.className='cat-head';
+    h.innerHTML=`<span class="ch-ic">${icon}</span>${title}<span class="ch-ln"></span>`;
+    fc.appendChild(h);
+    const grid=document.createElement('div'); grid.className='grid-foods';
+    FOODS.forEach((f,i)=>{
+      if(f.type!==type) return;
+      const el=document.createElement('div'); el.className='chip'; el.dataset.i=i;
+      el.innerHTML=`<span class="emo">${f.emoji}</span><span class="nm">${f.name}</span>`;
+      el.onclick=()=>{ chosenFood=f;
+        document.querySelectorAll('#foods .chip').forEach(c=>c.dataset.sel="0");
+        el.dataset.sel="1"; refreshLaunch(); };
+      grid.appendChild(el);
+    });
+    fc.appendChild(grid);
+  };
+  section("Foods","🍽️","solid");
+  section("Drinks","🥤","liquid");
   const hc=document.getElementById('hosts');
   HOSTS.forEach(h=>{
     const el=document.createElement('div'); el.className='host';
@@ -2010,6 +2084,12 @@ function wireControls(){
     this.classList.toggle('act',playing);
   };
   document.getElementById('c-skip').onclick=()=>{ if(!transitioning) nextStage(); };
+  document.getElementById('c-info').onclick=function(){
+    const hud=document.getElementById('hud');
+    const hidden=hud.classList.toggle('noinfo');
+    this.textContent=hidden?"ⓘ Show":"ⓘ Info";
+    this.classList.toggle('act',!hidden);
+  };
   document.getElementById('c-speed').oninput=function(){ speedMul=parseFloat(this.value); };
   document.getElementById('c-sound').onclick=function(){
     const m=Audio3D.toggleMute();
