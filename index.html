@@ -2435,7 +2435,7 @@ function animate(){
       const portrait = H()>=W();
       const fov = portrait?78:52;
       if(camera.fov!==fov){ camera.fov=fov; camera.updateProjectionMatrix(); }
-      camera.position.set(0, 0, portrait?12:9);
+      camera.position.set(0, 0, portrait?9.5:5.8);   // close in — the mouth fills the frame
       camera.up.set(0,1,0);
       camera.lookAt(0,0,0);
       camera.rotateY(yaw*0.3); camera.rotateX(pitch*0.3);
