@@ -162,7 +162,7 @@
 
   @media (max-width:720px){
     .pmap{ display:none; }
-    .readouts{ top:auto; bottom:calc(70px + env(safe-area-inset-bottom)); right:12px; flex-direction:row; }
+    .readouts{ display:none; }   /* hide Time in body / pH on phones — too cramped */
     .ro{ min-width:0; padding:7px 10px; } .ro .v{ font-size:15px; }
     .factcard{ bottom:calc(118px + env(safe-area-inset-bottom)); left:12px; width:min(330px,calc(100% - 24px)); }
     .status{ top:12px; left:12px; }
