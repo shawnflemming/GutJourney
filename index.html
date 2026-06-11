@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<title>VOYAGE INTERIOR — a journey through the body</title>
+<title>Poop and Pee Journey — a trip through the body</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -36,7 +36,7 @@
       radial-gradient(120% 90% at 50% -10%, rgba(57,230,200,.10), transparent 55%),
       radial-gradient(100% 100% at 50% 120%, rgba(240,169,59,.08), transparent 60%),
       rgba(4,6,9,.86); backdrop-filter:blur(7px); }
-  .card{ position:relative; width:min(960px,100%); }
+  .card{ position:relative; width:min(960px,100%); margin:auto; }
 
   .eyebrow{ font-family:'Space Mono',monospace; font-size:11px; letter-spacing:.42em;
     text-transform:uppercase; color:var(--bio); display:flex; align-items:center; gap:12px; }
@@ -175,22 +175,22 @@
   <div class="overlay" id="start" style="display:none;">
     <div class="veil"></div>
     <div class="card">
-      <div class="eyebrow">Interior voyage · anatomy sim</div>
-      <h1 class="title">You are about<br>to be <em>eaten.</em></h1>
-      <p class="lede">Become a single bite of food or a swallow of drink. You'll be chewed, swallowed,
-        churned and absorbed — riding first-person through every organ of a real human gut, exactly the way
-        anatomy says it happens. <b>Solids journey to the toilet as waste. Liquids are filtered into urine.</b>
+      <div class="eyebrow">Poop &amp; Pee Journey · anatomy sim</div>
+      <h1 class="title">Welcome to the<br><em>Digestion Journey</em></h1>
+      <p class="lede">Pick a food or drink, pick a sex, and hit <b>Begin</b> to be digested. You'll become that
+        single bite and ride through every organ of a real human gut — chewed, churned, absorbed, and finally
+        expelled. <b>Solids end as waste in the toilet; liquids are filtered into urine.</b>
         Drag to look around the wet, living interior as you travel.</p>
 
-      <div class="step-label"><span class="n">01</span> Choose what you are</div>
+      <div class="step-label"><span class="n">01</span> Pick a food or drink</div>
       <div class="grid-foods" id="foods"></div>
 
-      <div class="step-label"><span class="n">02</span> Choose who eats you</div>
+      <div class="step-label"><span class="n">02</span> Pick a sex</div>
       <div class="two" id="hosts"></div>
 
       <div class="launch">
-        <button class="btn" id="begin" disabled>Be swallowed <span class="arrow">→</span></button>
-        <div class="summary-pill" id="sel-summary">Select a food and a host to begin.</div>
+        <button class="btn" id="begin" disabled>Begin to be digested <span class="arrow">→</span></button>
+        <div class="summary-pill" id="sel-summary">Pick a food and a sex to begin.</div>
       </div>
     </div>
   </div>
@@ -1155,114 +1155,177 @@ function decorBladder(group, path, rad, stage){
 
 /* --- toilet: porcelain bowl, animated water ripple, realistic splash --- */
 let splashState=null;
+/* a sitting black cat — origin at its feet, facing +Z */
+function makeCat(){
+  const g=new THREE.Group();
+  const fur=new THREE.MeshStandardMaterial({color:0x0c0c11, roughness:0.92, metalness:0.0});
+  // sitting rear haunches
+  const haunch=new THREE.Mesh(new THREE.SphereGeometry(1.15,24,18), fur);
+  haunch.scale.set(1.0,0.95,1.18); haunch.position.set(0,1.05,-0.2); g.add(haunch);
+  // upright chest/body
+  const body=new THREE.Mesh(new THREE.SphereGeometry(0.85,24,18), fur);
+  body.scale.set(0.92,1.3,0.9); body.position.set(0,1.75,0.45); g.add(body);
+  // head
+  const head=new THREE.Mesh(new THREE.SphereGeometry(0.62,24,18), fur);
+  head.scale.set(1.06,0.96,1.0); head.position.set(0,2.8,0.62); g.add(head);
+  const muzzle=new THREE.Mesh(new THREE.SphereGeometry(0.3,16,12), fur);
+  muzzle.scale.set(1,0.7,1); muzzle.position.set(0,2.58,1.08); g.add(muzzle);
+  // ears + pink inner
+  const innerMat=new THREE.MeshStandardMaterial({color:0x3a2230, roughness:0.9});
+  [-0.32,0.32].forEach(x=>{
+    const ear=new THREE.Mesh(new THREE.ConeGeometry(0.27,0.55,4), fur);
+    ear.position.set(x,3.32,0.55); ear.rotation.y=Math.PI/4; g.add(ear);
+    const inner=new THREE.Mesh(new THREE.ConeGeometry(0.13,0.32,4), innerMat);
+    inner.position.set(x,3.28,0.62); inner.rotation.y=Math.PI/4; g.add(inner);
+  });
+  // glowing eyes so it clearly "watches"
+  const eyeMat=new THREE.MeshStandardMaterial({color:0xcfe24a, emissive:0xb6d22a, emissiveIntensity:1.3, roughness:0.3});
+  const pupMat=new THREE.MeshBasicMaterial({color:0x0a0a0a});
+  [-0.24,0.24].forEach(x=>{
+    const eye=new THREE.Mesh(new THREE.SphereGeometry(0.13,16,12), eyeMat);
+    eye.position.set(x,2.86,1.14); g.add(eye);
+    const pup=new THREE.Mesh(new THREE.SphereGeometry(0.055,10,8), pupMat);
+    pup.position.set(x,2.86,1.25); pup.scale.x=0.4; g.add(pup);
+  });
+  const nose=new THREE.Mesh(new THREE.SphereGeometry(0.075,10,8),
+    new THREE.MeshStandardMaterial({color:0x7a3a48, roughness:0.6}));
+  nose.position.set(0,2.52,1.34); g.add(nose);
+  // front legs + paws
+  [-0.32,0.32].forEach(x=>{
+    const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.24,1.45,14), fur);
+    leg.position.set(x,0.72,0.98); g.add(leg);
+    const paw=new THREE.Mesh(new THREE.SphereGeometry(0.28,14,12), fur);
+    paw.scale.set(1,0.7,1.25); paw.position.set(x,0.12,1.2); g.add(paw);
+  });
+  // tail curling around the front
+  const tailCurve=new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0.2,0.6,-1.0), new THREE.Vector3(1.15,0.4,-0.55),
+    new THREE.Vector3(1.45,0.3,0.45), new THREE.Vector3(1.0,0.25,1.25),
+    new THREE.Vector3(0.3,0.22,1.55)
+  ]);
+  g.add(new THREE.Mesh(new THREE.TubeGeometry(tailCurve,40,0.2,12,false), fur));
+  const tip=new THREE.Mesh(new THREE.SphereGeometry(0.21,12,10), fur);
+  tip.position.set(0.3,0.22,1.55); g.add(tip);
+  return g;
+}
 function decorToilet(group, path, stage){
-  // short fleshy exit tube
+  const isPee = stage.exitKind==="pee";
+  // short fleshy exit (the body opening above the bowl)
   const exitCurve=new THREE.CatmullRomCurve3([
     new THREE.Vector3(0,0.2,2.5), new THREE.Vector3(0,0,0.5),
-    new THREE.Vector3(0,-0.3,-2.5), new THREE.Vector3(0.2,-1,-6)
+    new THREE.Vector3(0,-0.3,-2.5), new THREE.Vector3(0.15,-1,-5)
   ]);
-  const exitGeo=new THREE.TubeGeometry(exitCurve,40,1.4,20,false);
-  displaceTube(exitGeo,0.12,2);
-  group.add(new THREE.Mesh(exitGeo, fleshMat(stage.exitKind==="pee"?0xc98a7a:0x9a6a52,{rough:0.52})));
+  const exitGeo=new THREE.TubeGeometry(exitCurve,40,0.9,18,false);
+  displaceTube(exitGeo,0.1,2);
+  group.add(new THREE.Mesh(exitGeo, fleshMat(isPee?0xc98a7a:0x9a6a52,{rough:0.52})));
 
-  scene.fog.color.set(0xc4d4d8); scene.fog.density=0.010;
-  // soft indoor bathroom light — not a blown-out studio
-  const sun=new THREE.DirectionalLight(0xfff4ec,0.75); sun.position.set(4,12,4); group.add(sun);
-  const sky=new THREE.HemisphereLight(0xeaf2f4,0x8a9aa0,0.45); group.add(sky);
-  const fillT=new THREE.PointLight(0xeae0d0,0.35,40,2.0); fillT.position.set(-6,2,-6); group.add(fillT);
+  scene.fog.color.set(0xb8c8ce); scene.fog.density=0.013;
+  const sun=new THREE.DirectionalLight(0xfff4ec,0.7); sun.position.set(5,14,6); group.add(sun);
+  const sky=new THREE.HemisphereLight(0xeaf2f4,0x8a9aa0,0.4); group.add(sky);
+  const fillT=new THREE.PointLight(0xeae0d0,0.3,40,2.0); fillT.position.set(-6,4,-4); group.add(fillT);
 
-  const waterY=-12.5, cz=-13;
-  // realistic porcelain — slightly grey-white, soft sheen, not a mirror
+  const cz=-13, waterY=-10;
   const porc=new THREE.MeshPhysicalMaterial({
-    color:0xe2e8ea, roughness:0.30, metalness:0.0,
-    clearcoat:0.55, clearcoatRoughness:0.12, side:THREE.DoubleSide
+    color:0xeef2f3, roughness:0.22, metalness:0.0,
+    clearcoat:0.55, clearcoatRoughness:0.10, side:THREE.DoubleSide
   });
+  const porcIn=new THREE.MeshPhysicalMaterial({
+    color:0xdfe6e8, roughness:0.28, metalness:0.0, clearcoat:0.4, side:THREE.DoubleSide
+  });
+  const ZS=1.18; // egg-shape: bowls are longer front-to-back
 
-  const bowl=new THREE.Mesh(new THREE.CylinderGeometry(9,5.8,12,64,1,true), porc);
-  bowl.position.set(0,waterY-2,cz); group.add(bowl);
-  const bottom=new THREE.Mesh(new THREE.SphereGeometry(5.8,48,24,0,Math.PI*2,Math.PI/2,Math.PI/2), porc);
-  bottom.position.set(0,waterY-8,cz); group.add(bottom);
-  const rim=new THREE.Mesh(new THREE.TorusGeometry(9,0.75,18,64), porc);
-  rim.rotation.x=Math.PI/2; rim.position.set(0,waterY+4,cz); group.add(rim);
+  // ---- a recognisable toilet fixture (bowl, rim, seat, tank, pedestal) ----
+  const outer=new THREE.Mesh(new THREE.CylinderGeometry(3.4,2.0,5.0,48,1,true), porc);
+  outer.position.set(0,waterY-1.4,cz); outer.scale.z=ZS; group.add(outer);
+  const funnel=new THREE.Mesh(new THREE.CylinderGeometry(3.15,0.85,4.2,48,1,true), porcIn);
+  funnel.position.set(0,waterY-1.6,cz); funnel.scale.z=ZS; group.add(funnel);
+  const sump=new THREE.Mesh(new THREE.SphereGeometry(1.4,32,20,0,Math.PI*2,Math.PI*0.5,Math.PI*0.5), porcIn);
+  sump.position.set(0,waterY-3.3,cz); sump.scale.z=ZS; group.add(sump);
+  const rim=new THREE.Mesh(new THREE.TorusGeometry(3.35,0.42,16,56), porc);
+  rim.rotation.x=Math.PI/2; rim.position.set(0,waterY+0.15,cz); rim.scale.set(1,ZS,1); group.add(rim);
+  const seat=new THREE.Mesh(new THREE.TorusGeometry(3.8,0.55,16,56), porc);
+  seat.rotation.x=Math.PI/2; seat.position.set(0,waterY+0.7,cz); seat.scale.set(1,ZS,1); group.add(seat);
+  // raised lid behind, tilted up
+  const lidUp=new THREE.Mesh(new THREE.CircleGeometry(3.9,40), porc);
+  lidUp.position.set(0,waterY+3.0,cz-3.4); lidUp.rotation.x=-0.35; lidUp.scale.x=1.0; group.add(lidUp);
+  // pedestal to the floor
+  const base=new THREE.Mesh(new THREE.CylinderGeometry(1.9,2.7,6,32), porc);
+  base.position.set(0,waterY-5.4,cz); group.add(base);
+  // cistern / tank behind
+  const tank=new THREE.Mesh(new THREE.BoxGeometry(6.4,4.6,2.2), porc);
+  tank.position.set(0,waterY+3.7,cz-4.0); group.add(tank);
+  const tlid=new THREE.Mesh(new THREE.BoxGeometry(6.8,0.5,2.7), porc);
+  tlid.position.set(0,waterY+6.1,cz-4.0); group.add(tlid);
+  const flushBtn=new THREE.Mesh(new THREE.CylinderGeometry(0.45,0.45,0.35,20), porc);
+  flushBtn.position.set(0,waterY+6.5,cz-4.0); group.add(flushBtn);
 
-  // animated water surface — real toilet water is mostly clear, lightly tinted
-  const waterCol=stage.exitKind==="pee"?0xcdd29a:0x9fb0ad;
-  const waterGeo=new THREE.CircleGeometry(8.5,72);
+  // ---- water surface (egg-shaped to fit the bowl) ----
+  const waterCol=isPee?0xe7d76a:0xbcd2d6;   // urine sits visibly yellow
+  const waterGeo=new THREE.CircleGeometry(2.95,64);
   const waterMat=new THREE.MeshPhysicalMaterial({
-    color:waterCol, roughness:0.06, metalness:0.0,
+    color:waterCol, roughness:0.05, metalness:0.0,
     clearcoat:1.0, clearcoatRoughness:0.04,
-    transmission:0.6, ior:1.33, thickness:2.0,
-    transparent:true, opacity:0.72, side:THREE.DoubleSide
+    transmission:0.55, ior:1.33, thickness:1.5,
+    transparent:true, opacity:isPee?0.8:0.7, side:THREE.DoubleSide
   });
   const water=new THREE.Mesh(waterGeo, waterMat);
-  water.rotation.x=-Math.PI/2; water.position.set(0,waterY,cz); group.add(water);
+  water.rotation.x=-Math.PI/2; water.position.set(0,waterY,cz); water.scale.y=ZS; group.add(water);
   const baseWaterPos=waterGeo.attributes.position.array.slice();
   dynamicObjs.push({type:"water_ripple", geo:waterGeo, basePos:baseWaterPos});
+  // darker water body beneath for depth
+  const deep=new THREE.Mesh(new THREE.CircleGeometry(2.85,40),
+    new THREE.MeshPhysicalMaterial({color:new THREE.Color(waterCol).multiplyScalar(0.45),
+      roughness:0.5, transparent:true, opacity:0.85, side:THREE.DoubleSide}));
+  deep.rotation.x=-Math.PI/2; deep.position.set(0,waterY-1.0,cz); deep.scale.y=ZS; group.add(deep);
 
-  // darker water body beneath the surface — gives the water real depth
-  const deep=new THREE.Mesh(
-    new THREE.CircleGeometry(8.3,48),
-    new THREE.MeshPhysicalMaterial({
-      color:new THREE.Color(waterCol).multiplyScalar(0.42),
-      roughness:0.5, metalness:0.0, transparent:true, opacity:0.85,
-      side:THREE.DoubleSide
-    })
-  );
-  deep.rotation.x=-Math.PI/2; deep.position.set(0,waterY-1.6,cz); group.add(deep);
-  // bright meniscus ring where water meets the porcelain
-  const men=new THREE.Mesh(
-    new THREE.RingGeometry(8.0,8.5,64),
-    new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.18, side:THREE.DoubleSide})
-  );
-  men.rotation.x=-Math.PI/2; men.position.set(0,waterY+0.02,cz); group.add(men);
+  // ---- bathroom backdrop ----
+  const tileMat=new THREE.MeshPhysicalMaterial({color:0xa6b6bc, roughness:0.6, clearcoat:0.25, side:THREE.DoubleSide});
+  const backWall=new THREE.Mesh(new THREE.PlaneGeometry(60,46), tileMat);
+  backWall.position.set(0,waterY+8,cz-11); group.add(backWall);
+  const floor=new THREE.Mesh(new THREE.PlaneGeometry(60,46),
+    new THREE.MeshPhysicalMaterial({color:0xb6c2c6, roughness:0.6, clearcoat:0.3, side:THREE.DoubleSide}));
+  floor.rotation.x=-Math.PI/2; floor.position.set(0,waterY-8.4,cz); group.add(floor);
 
-  // bathroom walls + floor
-  const tileMat=new THREE.MeshPhysicalMaterial({
-    color:0xaebec4, roughness:0.55, metalness:0.0,
-    clearcoat:0.35, clearcoatRoughness:0.30, side:THREE.DoubleSide
-  });
-  const backWall=new THREE.Mesh(new THREE.PlaneGeometry(64,44), tileMat);
-  backWall.position.set(0,waterY+6,cz-18); group.add(backWall);
-  const sideWall=new THREE.Mesh(new THREE.PlaneGeometry(44,44), tileMat);
-  sideWall.rotation.y=Math.PI/2; sideWall.position.set(-28,waterY+6,cz); group.add(sideWall);
-  const floor=new THREE.Mesh(new THREE.PlaneGeometry(64,44),
-    new THREE.MeshPhysicalMaterial({color:0xc8d4d8, roughness:0.55, clearcoat:0.4, side:THREE.DoubleSide}));
-  floor.rotation.x=-Math.PI/2; floor.position.set(0,waterY-14,cz); group.add(floor);
+  // ---- a black cat sitting to the right of the toilet, watching ----
+  const cat=makeCat();
+  cat.position.set(5.6, waterY-8.4, cz+1.2);   // on the floor, right of the bowl
+  cat.scale.setScalar(1.7);
+  cat.rotation.y=-1.84;                          // turn to face the bowl
+  group.add(cat);
+  // faint key light so the black cat reads against the wall
+  const catLight=new THREE.PointLight(0xfff0e0,0.5,22,2.0);
+  catLight.position.set(8,waterY+2,cz+6); group.add(catLight);
 
-  // splash actors
+  // ---- splash actors (sized to the smaller bowl) ----
   const ripples=[];
   for(let i=0;i<5;i++){
-    const r=new THREE.Mesh(
-      new THREE.RingGeometry(0.5,0.85,56),
-      new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0, side:THREE.DoubleSide})
-    );
-    r.rotation.x=-Math.PI/2; r.position.set(0,waterY+0.06,cz); r.visible=false;
+    const r=new THREE.Mesh(new THREE.RingGeometry(0.18,0.3,48),
+      new THREE.MeshBasicMaterial({color:isPee?0xf0e27a:0xffffff, transparent:true, opacity:0, side:THREE.DoubleSide}));
+    r.rotation.x=-Math.PI/2; r.position.set(0,waterY+0.05,cz); r.visible=false;
     group.add(r); ripples.push(r);
   }
-  const DROPS=160;
+  // pee = many yellow droplets; poop = water spray flung up by the impact
+  const DROPS=isPee?240:150;
   const dropGeo=new THREE.BufferGeometry();
   const dpos=new Float32Array(DROPS*3);
   const dvel=[];
   for(let i=0;i<DROPS;i++){
     dpos[i*3]=0; dpos[i*3+1]=waterY; dpos[i*3+2]=cz;
-    const ang=Math.random()*Math.PI*2, sp=2+Math.random()*8;
-    dvel.push(new THREE.Vector3(Math.cos(ang)*sp*0.5, 6+Math.random()*10, Math.sin(ang)*sp*0.5));
+    const ang=Math.random()*Math.PI*2, sp=(isPee?1.0:1.6)+Math.random()*(isPee?2.2:3.4);
+    dvel.push(new THREE.Vector3(Math.cos(ang)*sp, (isPee?2.5:3.5)+Math.random()*(isPee?4:6), Math.sin(ang)*sp));
   }
   dropGeo.setAttribute('position',new THREE.BufferAttribute(dpos,3));
   const drops=new THREE.Points(dropGeo,
-    new THREE.PointsMaterial({color:0xffffff, size:0.55, transparent:true, opacity:0, depthWrite:false}));
+    new THREE.PointsMaterial({color:isPee?0xe9d44a:0xeaf2f4, size:isPee?0.28:0.22,
+      transparent:true, opacity:0, depthWrite:false}));
   drops.visible=false; group.add(drops);
 
   const crown=new THREE.Mesh(
-    new THREE.CylinderGeometry(2.6,0.35,3.2,28,1,true),
-    new THREE.MeshPhysicalMaterial({
-      color:stage.exitKind==="pee"?0xeae050:0xd0c880,
-      transparent:true, opacity:0,
-      roughness:0.04, metalness:0.3,
-      clearcoat:0.9, clearcoatRoughness:0.04, side:THREE.DoubleSide
-    })
-  );
-  crown.position.set(0,waterY+1.6,cz); crown.visible=false; group.add(crown);
+    new THREE.CylinderGeometry(0.95,0.2,1.3,28,1,true),
+    new THREE.MeshPhysicalMaterial({color:isPee?0xe9d44a:0xcfe0e6,
+      transparent:true, opacity:0, roughness:0.05, metalness:0.0,
+      clearcoat:0.9, clearcoatRoughness:0.05, side:THREE.DoubleSide}));
+  crown.position.set(0,waterY+0.6,cz); crown.visible=false; group.add(crown);
 
   splashState={ waterY, cz, water, waterGeo, baseWaterPos,
                 ripples, drops, dropGeo, dpos, dvel, DROPS, crown,
@@ -1278,8 +1341,8 @@ function updateSplash(dt, t){
   s.ripples.forEach((r,i)=>{
     const lt=T-i*0.15; if(lt<=0) return;
     r.visible=true;
-    const sc=1+lt*16; r.scale.set(sc,sc,sc);
-    r.material.opacity=Math.max(0,0.72-lt*0.66);
+    const sc=1+lt*9; r.scale.set(sc,sc,sc);   // sized to the smaller bowl
+    r.material.opacity=Math.max(0,0.7-lt*0.7);
   });
   if(s.crown){
     s.crown.visible=true;
@@ -1581,6 +1644,117 @@ function makeDrop(hex){
   });
   return new THREE.Mesh(geo, mat);
 }
+/* recognisable 3D food models built from primitives */
+function fm(hex,opts={}){
+  const c=new THREE.Color(hex);
+  return new THREE.MeshPhysicalMaterial({
+    color:c, roughness:opts.r??0.6, metalness:0.0,
+    clearcoat:opts.cc??0.3, clearcoatRoughness:opts.ccr??0.3,
+    emissive:c.clone().multiplyScalar(opts.e??0.04),
+    side:opts.side||THREE.FrontSide
+  });
+}
+function disc(r,h,seg,mat){ return new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,seg||28),mat); }
+function makeFoodModel(food){
+  const g=new THREE.Group();
+  const name=food?food.name:"Apple";
+  switch(name){
+    case "Apple": {
+      const body=new THREE.Mesh(new THREE.SphereGeometry(0.72,24,20), fm(0xcc2b22,{cc:0.7,r:0.35}));
+      body.scale.set(1,0.9,1);
+      // top + bottom dimple
+      const d=new THREE.Mesh(new THREE.SphereGeometry(0.18,12,10), fm(0x7a1610,{r:0.8}));
+      d.position.y=0.6; d.scale.y=0.5; g.add(body,d);
+      const stem=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.05,0.28,8), fm(0x5a3a1a,{r:0.9}));
+      stem.position.y=0.74; g.add(stem);
+      const leaf=new THREE.Mesh(new THREE.SphereGeometry(0.16,10,8), fm(0x4f9a3a,{r:0.7}));
+      leaf.scale.set(1,0.3,0.55); leaf.position.set(0.18,0.8,0); leaf.rotation.z=-0.5; g.add(leaf);
+      break; }
+    case "Burger": {
+      const bun=fm(0xd0913f,{r:0.7});
+      const bot=disc(0.7,0.26,28,bun); bot.position.y=-0.42; g.add(bot);
+      const patty=disc(0.76,0.24,28,fm(0x4f2a18,{r:0.85})); patty.position.y=-0.18; g.add(patty);
+      const cheese=new THREE.Mesh(new THREE.BoxGeometry(1.32,0.07,1.32), fm(0xf2b53a,{r:0.5}));
+      cheese.position.y=-0.02; cheese.rotation.y=Math.PI/4; g.add(cheese);
+      const let_=disc(0.82,0.1,28,fm(0x73b23c,{r:0.9})); let_.position.y=0.06; g.add(let_);
+      const top=new THREE.Mesh(new THREE.SphereGeometry(0.72,28,16,0,Math.PI*2,0,Math.PI*0.5), bun);
+      top.scale.y=0.82; top.position.y=0.12; g.add(top);
+      for(let i=0;i<7;i++){ const s=new THREE.Mesh(new THREE.SphereGeometry(0.05,8,6), fm(0xf3e2b0,{r:0.6}));
+        const a=i/7*Math.PI*2; s.position.set(Math.cos(a)*0.34,0.5,Math.sin(a)*0.34); g.add(s); }
+      break; }
+    case "Broccoli": {
+      const stalk=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.24,0.55,12), fm(0xbcd089,{r:0.8}));
+      stalk.position.y=-0.42; g.add(stalk);
+      const crown=fm(0x35702a,{r:0.95});
+      for(let i=0;i<9;i++){ const r=0.2+Math.random()*0.08;
+        const b=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(r,10,8),6,0.18), crown);
+        const a=i/9*Math.PI*2, rad=0.28+Math.random()*0.14;
+        b.position.set(Math.cos(a)*rad,0.18+Math.random()*0.22,Math.sin(a)*rad); g.add(b); }
+      g.add(new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.26,12,10),6,0.18), crown));
+      break; }
+    case "Pizza": {
+      const ang=Math.PI/3.0;
+      const base=new THREE.Mesh(new THREE.CylinderGeometry(1.15,1.15,0.1,40,1,false,0,ang), fm(0xe0a945,{r:0.7}));
+      const sauce=new THREE.Mesh(new THREE.CylinderGeometry(1.0,1.0,0.06,40,1,false,0.06,ang-0.12), fm(0xb13a22,{r:0.6}));
+      sauce.position.y=0.07;
+      const cheese=new THREE.Mesh(new THREE.CylinderGeometry(1.0,1.0,0.05,40,1,false,0.06,ang-0.12), fm(0xf0c14a,{r:0.5}));
+      cheese.position.y=0.12;
+      g.add(base,sauce,cheese);
+      // crust ridge at wide edge
+      const crust=new THREE.Mesh(new THREE.TorusGeometry(1.1,0.12,10,24,ang), fm(0xcf9a45,{r:0.75}));
+      crust.rotation.x=Math.PI/2; crust.position.y=0.05; g.add(crust);
+      for(let i=0;i<3;i++){ const p=new THREE.Mesh(disc(0.13,0.04,16,fm(0x9b2f22,{r:0.5})).geometry, fm(0x9b2f22,{r:0.5}));
+        p.position.set(0.4+i*0.15,0.16, 0.3+ (i*0.18)); g.add(p); }
+      g.rotation.z=-0.15;
+      break; }
+    case "Sushi": {
+      const rice=new THREE.Mesh(new THREE.BoxGeometry(0.8,0.5,1.15), fm(0xf2efe6,{r:0.7}));
+      rice.geometry=noisyBlob(rice.geometry,5,0.04);
+      const fish=new THREE.Mesh(new THREE.BoxGeometry(0.86,0.16,1.2), fm(0xe8915a,{r:0.35,cc:0.5}));
+      fish.position.y=0.32;
+      const nori=new THREE.Mesh(new THREE.BoxGeometry(0.84,0.58,0.16), fm(0x26352a,{r:0.6}));
+      g.add(rice,fish,nori);
+      break; }
+    case "Chocolate": {
+      const bar=new THREE.Mesh(new THREE.BoxGeometry(1.35,0.3,0.95), fm(0x3a2113,{cc:0.5,r:0.35}));
+      g.add(bar);
+      for(let x=-1;x<=1;x++) for(let z=-1;z<=1;z+=2){
+        const sq=new THREE.Mesh(new THREE.BoxGeometry(0.34,0.08,0.34), fm(0x4a2c1a,{cc:0.5,r:0.35}));
+        sq.position.set(x*0.42,0.17,z*0.22); g.add(sq); }
+      break; }
+    case "Bread": {
+      const loaf=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.72,22,18),3,0.07), fm(0xcaa069,{r:0.7}));
+      loaf.scale.set(1.25,0.78,0.92); g.add(loaf);
+      const top=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.6,18,14),3,0.07), fm(0xb07e44,{r:0.65}));
+      top.scale.set(1.15,0.5,0.8); top.position.y=0.22; g.add(top);
+      break; }
+    case "Taco": {
+      const shell=new THREE.Mesh(new THREE.CylinderGeometry(0.7,0.7,1.1,28,1,true,0,Math.PI), fm(0xe3b24e,{r:0.7,side:THREE.DoubleSide}));
+      shell.rotation.z=Math.PI/2; shell.rotation.y=Math.PI/2; g.add(shell);
+      const fill=new THREE.Mesh(new THREE.BoxGeometry(1.0,0.3,0.5), fm(0x5e3322,{r:0.8})); fill.position.y=-0.1; g.add(fill);
+      const let_=new THREE.Mesh(new THREE.BoxGeometry(1.05,0.12,0.55), fm(0x6fae3a,{r:0.9})); let_.position.y=0.06; g.add(let_);
+      const tom=new THREE.Mesh(new THREE.BoxGeometry(0.9,0.1,0.4), fm(0xc0392b,{r:0.7})); tom.position.y=0.14; g.add(tom);
+      break; }
+    case "Steak": {
+      const meat=new THREE.Mesh(noisyBlob(new THREE.BoxGeometry(1.25,0.36,0.95,6,2,5),2.0,0.05), fm(0x6e3a26,{r:0.7}));
+      g.add(meat);
+      const fat=new THREE.Mesh(new THREE.TorusGeometry(0.55,0.06,8,28), fm(0xd9b89a,{r:0.7}));
+      fat.rotation.x=Math.PI/2; fat.scale.set(1.05,1,0.78); fat.position.y=0.0; g.add(fat);
+      for(let i=-1;i<=1;i++){ const sear=new THREE.Mesh(new THREE.BoxGeometry(1.0,0.02,0.06), fm(0x35201a,{r:0.8}));
+        sear.position.set(0,0.19,i*0.22); sear.rotation.y=0.5; g.add(sear); }
+      break; }
+    case "Pasta": {
+      const mound=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.72,20,16),4,0.13), fm(0xe6d29a,{r:0.7}));
+      mound.scale.y=0.66; g.add(mound);
+      const sauce=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.5,16,12),5,0.16), fm(0xb6391f,{r:0.6}));
+      sauce.scale.y=0.45; sauce.position.y=0.28; g.add(sauce);
+      const ball=new THREE.Mesh(new THREE.SphereGeometry(0.16,12,10), fm(0x6e3a24,{r:0.7}));
+      ball.position.set(0.18,0.42,0.1); g.add(ball);
+      break; }
+    default: return makeBolus(food?food.color:0xc0392b);
+  }
+  return g;
+}
 /* what 3D form represents you at this stage */
 function avatarSpec(stage){
   const fc=chosenFood?chosenFood.color:0xc0392b;
@@ -1589,17 +1763,20 @@ function avatarSpec(stage){
       ? (stage.exitKind==="pee"?0xe6dd6a:0xcfd0c0) : fc;
     return {kind:"drop", color:col};
   }
+  // solids: recognisable food early → chewed bolus mid-tract → poop at the end
   if(/^(large|rectum|toilet)$/.test(stage.id)) return {kind:"poop", color:0x5e3a1c};
+  if(/^(mouth|esophagus)$/.test(stage.id))     return {kind:"food", color:fc};
   return {kind:"bolus", color:fc};
 }
 function setAvatar(stage){
   const spec=avatarSpec(stage);
-  const key=spec.kind+":"+spec.color;
+  const key=spec.kind+":"+spec.color+":"+(chosenFood?chosenFood.name:"");
   if(key===avatarKey && foodAvatar) return;
   avatarKey=key;
   if(foodAvatar){ scene.remove(foodAvatar); disposeGroup(foodAvatar); foodAvatar=null; }
   foodAvatar = spec.kind==="poop" ? makePoop()
              : spec.kind==="drop" ? makeDrop(spec.color)
+             : spec.kind==="food" ? makeFoodModel(chosenFood)
              : makeBolus(spec.color);
   scene.add(foodAvatar);
 }
@@ -1627,26 +1804,26 @@ function animate(){
     if(stage.decor==="toilet"){
       /* ---- TOILET: watch the food drop into the bowl from outside ---- */
       const s=splashState;
-      const wy=s?s.waterY:-12.5, cz=s?s.cz:-13;
-      if(camera.fov!==58){ camera.fov=58; camera.updateProjectionMatrix(); }
-      camera.position.set(0, wy+9, cz+19);
+      const wy=s?s.waterY:-10, cz=s?s.cz:-13;
+      if(camera.fov!==56){ camera.fov=56; camera.updateProjectionMatrix(); }
+      camera.position.set(0, wy+6.5, cz+12);
       camera.up.set(0,1,0);
-      camera.lookAt(0, wy+1.5, cz);
+      camera.lookAt(0, wy+0.6, cz);
       camera.rotateY(yaw*0.4); camera.rotateX(pitch*0.4);
       if(foodAvatar){
         const fallT=Math.min(t/0.60,1);            // lands as splash triggers (t>0.60)
-        const y0=wy+16, y1=wy+0.5;
+        const y0=wy+11, y1=wy+0.5;
         foodAvatar.visible=!(s&&s.triggered);
         foodAvatar.position.set(0, y0+(y1-y0)*fallT, cz);
         foodAvatar.rotation.x+=dt*2.2; foodAvatar.rotation.y+=dt*1.4; // tumble as it falls
-        foodAvatar.scale.setScalar(1.7);
+        foodAvatar.scale.setScalar(1.0);
       }
       // lights focus on the bowl
       if(headlight){
-        headlight.position.set(0, wy+10, cz+6);
-        headlight.intensity=0.9;
-        headFront.position.set(0, wy+4, cz+10); headFront.intensity=0.5;
-        rimLight.position.set(0, wy+2, cz-8); rimLight.intensity=0.3;
+        headlight.position.set(0, wy+7, cz+5);
+        headlight.intensity=0.85;
+        headFront.position.set(0, wy+3, cz+8); headFront.intensity=0.45;
+        rimLight.position.set(0, wy+2, cz-6); rimLight.intensity=0.3;
       }
     } else {
       /* ---- GI / URINARY TUBE: third-person, camera trails the food ---- */
@@ -1794,6 +1971,7 @@ function begin(){
 }
 
 function finish(){
+  playing=false;                        // stop the travel loop re-triggering finish()
   if(foodAvatar) foodAvatar.visible=false;
   if(window.Audio3D) Audio3D.quiet();   // stop the looping gut ambience
   document.getElementById('hud').classList.remove('on');
