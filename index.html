@@ -140,6 +140,15 @@
   .speed{ display:flex; align-items:center; gap:8px; padding:0 8px; color:var(--muted-2); font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.1em; }
   .speed input{ width:88px; accent-color:var(--bio); }
 
+  .toast{ position:absolute; top:90px; left:50%; transform:translate(-50%,-14px); opacity:0;
+    pointer-events:none; text-align:center; max-width:min(420px,calc(100% - 30px));
+    background:linear-gradient(180deg, rgba(24,16,6,.94), rgba(14,10,5,.94));
+    border:1px solid var(--acid); border-radius:14px; padding:12px 20px;
+    box-shadow:0 14px 44px -16px rgba(240,169,59,.5); transition:.45s ease; }
+  .toast.on{ opacity:1; transform:translate(-50%,0); }
+  .toast .tt{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:17px; color:var(--acid); }
+  .toast .tx{ font-size:12.5px; color:var(--text); margin-top:3px; line-height:1.5; }
+
   .done-btn{ position:absolute; bottom:78px; left:50%; transform:translateX(-50%); display:none;
     pointer-events:auto; font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:15px;
     background:var(--bio); color:#04140f; border:none; border-radius:999px; padding:14px 28px; cursor:pointer;
@@ -233,6 +242,7 @@
       <div class="fx" id="fact-text"></div>
     </div>
     <div class="hint" id="hint">Drag to look around · sound on · you travel automatically</div>
+    <div class="toast" id="toast"><div class="tt" id="toast-t"></div><div class="tx" id="toast-x"></div></div>
     <button class="done-btn" id="c-done">Done ✓</button>
     <div class="controls">
       <button class="cbtn act" id="c-play">❚❚ Pause</button>
@@ -257,7 +267,7 @@
     </div>
   </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="three.min.js"></script>
 <script>
 "use strict";
 
@@ -268,7 +278,9 @@ const Audio3D = (function(){
   let ctx=null, master=null, bedFilter=null, bedGain=null, noiseSrc=null;
   let rumbleOsc=null, rumbleGain=null;
   let started=false, muted=false, alive=false;
-  let curStage="", bubbleTimer=null, heartTimer=null;
+  let curStage="", bubbleTimer=null, heartTimer=null, chewTimer=null;
+  let foodSnd={crunch:0.4, grease:0.3};
+  function setFood(p){ foodSnd={crunch:(p&&p.crunch!=null)?p.crunch:0.4, grease:(p&&p.grease!=null)?p.grease:0.3}; }
 
   function makeNoiseBuffer(){
     const len=ctx.sampleRate*2;
@@ -331,6 +343,37 @@ const Audio3D = (function(){
   function clearTimers(){
     if(bubbleTimer){clearTimeout(bubbleTimer);bubbleTimer=null;}
     if(heartTimer){clearInterval(heartTimer);heartTimer=null;}
+    if(chewTimer){clearTimeout(chewTimer);chewTimer=null;}
+  }
+
+  /* chew: two quick filtered-noise crunches — brighter when the food is crunchy */
+  function chew(){
+    if(!ctx||muted) return;
+    const t=now(), cr=foodSnd.crunch;
+    [0,0.16].forEach((dt0,i)=>{
+      const src=ctx.createBufferSource(); src.buffer=makeNoiseBuffer();
+      const f=ctx.createBiquadFilter(); f.type='bandpass';
+      f.frequency.setValueAtTime(700+cr*2200, t+dt0);
+      f.frequency.exponentialRampToValueAtTime(220, t+dt0+0.09); f.Q.value=1.1;
+      const g=ctx.createGain(); g.gain.setValueAtTime(0.0001,t+dt0);
+      g.gain.linearRampToValueAtTime(0.18+cr*0.2, t+dt0+0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t+dt0+(i?0.16:0.11));
+      src.connect(f); f.connect(g); g.connect(master); src.start(t+dt0); src.stop(t+dt0+0.2);
+    });
+  }
+
+  /* gulp: the big swallow — descending pitch + a glug */
+  function gulp(){
+    if(!ctx||muted) return;
+    const t=now();
+    const o=ctx.createOscillator(); o.type='sine';
+    o.frequency.setValueAtTime(320,t);
+    o.frequency.exponentialRampToValueAtTime(70,t+0.28);
+    const g=ctx.createGain(); g.gain.setValueAtTime(0.0001,t);
+    g.gain.linearRampToValueAtTime(0.5,t+0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+0.34);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t+0.36);
+    setTimeout(()=>bubble(140,0.3,0.25),140);
   }
 
   function bubbleLoop(rate, fLo, fHi, vol){
@@ -367,7 +410,16 @@ const Audio3D = (function(){
     bedGain.gain.linearRampToValueAtTime(b.bed, t+0.6);
     rumbleGain.gain.linearRampToValueAtTime(b.rumble, t+0.6);
     if(b.heart){ heartTimer=setInterval(heartbeat, 900); }
-    else if(b.rate>0){ bubbleLoop(b.rate, b.fLo, b.fHi, b.bvol); }
+    else if(b.rate>0){
+      // greasy food makes the stomach gurgle more and louder
+      const greasy=(id==="stomach")?foodSnd.grease:0;
+      bubbleLoop(b.rate*(1-greasy*0.45), b.fLo, b.fHi, b.bvol*(1+greasy*0.8));
+    }
+    if(id==="mouth"){
+      const ct=()=>{ chew(); chewTimer=setTimeout(ct, 520+Math.random()*420); };
+      chewTimer=setTimeout(ct,350);
+    }
+    if(id==="esophagus") setTimeout(()=>gulp(),150);
   }
 
   function splash(){
@@ -426,28 +478,39 @@ const Audio3D = (function(){
     setTimeout(()=>splash(),35);
   }
 
-  /* fart: low sputtery sawtooth with a choppy amplitude wobble (the brrrt) */
-  function fart(){
+  /* fart: low sputtery sawtooth with a choppy amplitude wobble (the brrrt)
+     opts: {big} = high-fibre food → longer/louder; {wet} = diarrhea → squelchy */
+  function fart(opts){
     if(!ctx||muted) return;
-    const t=now(), dur=0.5+Math.random()*0.18;
+    const big=!!(opts&&opts.big), wet=!!(opts&&opts.wet);
+    const t=now(), dur=0.5+Math.random()*0.18+(big?0.28:0)+(wet?0.35:0);
     const o=ctx.createOscillator(); o.type='sawtooth';
-    o.frequency.setValueAtTime(95,t);
-    o.frequency.linearRampToValueAtTime(68,t+dur*0.25);
-    o.frequency.linearRampToValueAtTime(125,t+dur*0.6);
-    o.frequency.linearRampToValueAtTime(55,t+dur);
-    const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=850; lp.Q.value=4;
+    o.frequency.setValueAtTime(wet?80:95,t);
+    o.frequency.linearRampToValueAtTime(wet?52:68,t+dur*0.25);
+    o.frequency.linearRampToValueAtTime(wet?100:125,t+dur*0.6);
+    o.frequency.linearRampToValueAtTime(wet?42:55,t+dur);
+    const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=wet?520:850; lp.Q.value=4;
     const g=ctx.createGain();
     g.gain.setValueAtTime(0.0001,t);
-    g.gain.linearRampToValueAtTime(0.5,t+0.03);
-    g.gain.setValueAtTime(0.46,t+dur*0.8);
+    g.gain.linearRampToValueAtTime(0.5+(big?0.12:0),t+0.03);
+    g.gain.setValueAtTime(0.46+(big?0.1:0),t+dur*0.8);
     g.gain.exponentialRampToValueAtTime(0.0001,t+dur+0.08);
-    // amplitude flutter that gives it the raspberry "brap"
+    // amplitude flutter that gives it the raspberry "brap" (slower+deeper when wet)
     const wob=ctx.createOscillator(); wob.type='square';
-    wob.frequency.setValueAtTime(20,t); wob.frequency.linearRampToValueAtTime(34,t+dur);
-    const wobG=ctx.createGain(); wobG.gain.value=0.45;
+    wob.frequency.setValueAtTime(wet?15:20,t); wob.frequency.linearRampToValueAtTime(wet?26:34,t+dur);
+    const wobG=ctx.createGain(); wobG.gain.value=wet?0.6:0.45;
     wob.connect(wobG); wobG.connect(g.gain);
     o.connect(lp); lp.connect(g); g.connect(master);
     o.start(t); o.stop(t+dur+0.1); wob.start(t); wob.stop(t+dur+0.1);
+    if(wet){ // squelchy noise layer underneath
+      const src=ctx.createBufferSource(); src.buffer=makeNoiseBuffer();
+      const f=ctx.createBiquadFilter(); f.type='lowpass'; f.frequency.setValueAtTime(420,t);
+      f.frequency.exponentialRampToValueAtTime(160,t+dur); f.Q.value=2;
+      const ng=ctx.createGain(); ng.gain.setValueAtTime(0.0001,t);
+      ng.gain.linearRampToValueAtTime(0.3,t+0.05);
+      ng.gain.exponentialRampToValueAtTime(0.0001,t+dur+0.1);
+      src.connect(f); f.connect(ng); ng.connect(master); src.start(t); src.stop(t+dur+0.15);
+    }
   }
 
   /* meow: a "me-ow" pitch arc with vibrato and a vowel formant */
@@ -496,31 +559,70 @@ const Audio3D = (function(){
     if(bedGain)    bedGain.gain.linearRampToValueAtTime(0, t+0.4);
     if(rumbleGain) rumbleGain.gain.linearRampToValueAtTime(0, t+0.4);
   }
-  return { init, setStage, splash, pee, plop, fart, meow, toggleMute, close, suspend, resume, quiet, get muted(){return muted;} };
+  return { init, setStage, setFood, splash, pee, plop, fart, meow, toggleMute, close, suspend, resume, quiet, get muted(){return muted;} };
 })();
 window.Audio3D=Audio3D;
 
 /* ============================================================
    DATA: foods, hosts
    ============================================================ */
+/* tr = digestion traits that make your food choice actually matter:
+   stom   — stomach-time multiplier (fat & protein digest slowly)
+   fib    — fibre 0–2 (big fibre = bigger gas at the end)
+   grease — 0–1 (greasy food = more gurgles + higher diarrhea chance)
+   crunch — 0–1 (how crunchy the chewing sounds)
+   rush   — whole-journey speed multiplier (caffeine!)
+   note   — extra fact lines shown in specific organs                       */
 const FOODS = [
-  { emoji:"🍎", name:"Apple",     type:"solid",  color:0xc0392b },
-  { emoji:"🍔", name:"Burger",    type:"solid",  color:0x8b5a2b },
-  { emoji:"🥦", name:"Broccoli",  type:"solid",  color:0x4a7c2f },
-  { emoji:"🍕", name:"Pizza",     type:"solid",  color:0xd6a04a },
-  { emoji:"🍣", name:"Sushi",     type:"solid",  color:0xe0b8a0 },
-  { emoji:"🍫", name:"Chocolate", type:"solid",  color:0x4a2c1a },
-  { emoji:"🍞", name:"Bread",     type:"solid",  color:0xc9a36a },
-  { emoji:"🌮", name:"Taco",      type:"solid",  color:0xd9a441 },
-  { emoji:"🥩", name:"Steak",     type:"solid",  color:0x7a3b2e },
-  { emoji:"🍝", name:"Pasta",     type:"solid",  color:0xe3c98f },
-  { emoji:"🐱", name:"Kitten",    type:"solid",  color:0x3a3a42 },
-  { emoji:"💧", name:"Water",     type:"liquid", color:0x9fd4e0 },
-  { emoji:"🥤", name:"Soda",      type:"liquid", color:0x6a3a1a },
-  { emoji:"🧃", name:"Juice",     type:"liquid", color:0xe08a2a },
-  { emoji:"🥛", name:"Milk",      type:"liquid", color:0xf0ece0 },
-  { emoji:"☕", name:"Coffee",    type:"liquid", color:0x3a2415 },
-  { emoji:"🥤", name:"Smoothie",  type:"liquid", color:0xc05a7a },
+  { emoji:"🍎", name:"Apple",     type:"solid",  color:0xc0392b,
+    tr:{stom:0.7, fib:1.4, grease:0.05, crunch:1.0,
+      note:{small:"Apple <b>pectin</b> fibre is a feast for your friendly gut bacteria."}} },
+  { emoji:"🍔", name:"Burger",    type:"solid",  color:0x8b5a2b,
+    tr:{stom:1.5, fib:0.4, grease:0.8, crunch:0.35,
+      note:{stomach:"Fatty foods empty slowly — a burger can sit here <b>4+ hours</b>."}} },
+  { emoji:"🥦", name:"Broccoli",  type:"solid",  color:0x4a7c2f,
+    tr:{stom:0.9, fib:2.0, grease:0.05, crunch:0.9,
+      note:{large:"<b>Fibre power!</b> Broccoli gives your microbes a feast — expect extra gas…"}} },
+  { emoji:"🍕", name:"Pizza",     type:"solid",  color:0xd6a04a,
+    tr:{stom:1.4, fib:0.5, grease:0.7, crunch:0.45,
+      note:{stomach:"Cheese and oil slow the stomach right down — pizza takes its time."}} },
+  { emoji:"🍣", name:"Sushi",     type:"solid",  color:0xe0b8a0,
+    tr:{stom:1.0, fib:0.4, grease:0.15, crunch:0.2,
+      note:{small:"Fish protein digests easily, and the rice's starch turned to sugar fast."}} },
+  { emoji:"🍫", name:"Chocolate", type:"solid",  color:0x4a2c1a,
+    tr:{stom:1.1, fib:0.3, grease:0.45, crunch:0.5,
+      note:{small:"Chocolate's <b>sugar</b> zips into the blood; its fat takes much longer."}} },
+  { emoji:"🍞", name:"Bread",     type:"solid",  color:0xc9a36a,
+    tr:{stom:0.9, fib:0.7, grease:0.1, crunch:0.3,
+      note:{mouth:"Chew bread long enough and it turns <b>sweet</b> — that's amylase making sugar!"}} },
+  { emoji:"🌮", name:"Taco",      type:"solid",  color:0xd9a441,
+    tr:{stom:1.3, fib:0.8, grease:0.8, crunch:0.8,
+      note:{large:"Greasy + spicy can make the colon <b>rush</b>… fingers crossed."}} },
+  { emoji:"🥩", name:"Steak",     type:"solid",  color:0x7a3b2e,
+    tr:{stom:1.7, fib:0.1, grease:0.5, crunch:0.4,
+      note:{stomach:"<b>Protein champion.</b> Pepsin has to work overtime — steak lingers here longest."}} },
+  { emoji:"🍝", name:"Pasta",     type:"solid",  color:0xe3c98f,
+    tr:{stom:1.0, fib:0.6, grease:0.3, crunch:0.1,
+      note:{small:"Carb loading! Pasta breaks into <b>glucose</b> — your body's favourite fuel."}} },
+  { emoji:"🐱", name:"Kitten",    type:"solid",  color:0x3a3a42,
+    tr:{stom:1.6, fib:1.5, grease:0.2, crunch:0.25,
+      note:{mouth:"Wait — did you just eat a <b>kitten</b>?! (Relax, it's a toy one.)",
+            stomach:"Fur is mostly <b>keratin</b> — even stomach acid can't break it down.",
+            large:"All that fluff is indigestible, so it rides with you to the very end."}} },
+  { emoji:"💧", name:"Water",     type:"liquid", color:0x9fd4e0,
+    tr:{note:{kidney:"Pure hydration — the kidneys barely have to work to balance it."}} },
+  { emoji:"🥤", name:"Soda",      type:"liquid", color:0x6a3a1a,
+    tr:{note:{small:"That <b>sugar rush</b> hits your bloodstream within minutes.",
+              kidney:"Caffeine is a <b>diuretic</b> — it tells the kidneys to make extra urine."}} },
+  { emoji:"🧃", name:"Juice",     type:"liquid", color:0xe08a2a,
+    tr:{note:{small:"Fruit sugar without the fruit's fibre absorbs <b>fast</b>."}} },
+  { emoji:"🥛", name:"Milk",      type:"liquid", color:0xf0ece0,
+    tr:{note:{small:"The enzyme <b>lactase</b> splits milk sugar — some tummies don't make enough of it!"}} },
+  { emoji:"☕", name:"Coffee",    type:"liquid", color:0x3a2415,
+    tr:{rush:1.3,
+      note:{kidney:"<b>Caffeine alert!</b> It's a diuretic — your kidneys make more urine, faster."}} },
+  { emoji:"🥤", name:"Smoothie",  type:"liquid", color:0xc05a7a,
+    tr:{note:{small:"Blended fruit still carries some fibre — gentler on the gut than juice."}} },
 ];
 const HOSTS = [
   { id:"woman", icon:"🧍‍♀️", title:"A woman", sub:"shorter urethra (~4 cm)" },
@@ -624,6 +726,7 @@ let playing=true, speedMul=1, looking=false;
 let yaw=0, pitch=0;
 let headlight=null, headFront=null, headBack=null, fillLight=null, rimLight=null;
 let chosenFood=null, chosenHost=null, isLiquid=false;
+let foodTr={}, hasRuns=false, journeyEvent=null;
 let elapsedSeconds=0;
 let dynamicObjs=[];
 let transitioning=false;
@@ -760,11 +863,14 @@ function fleshMat(color, opts={}){
 
 /* --- winding organic path --- */
 function makePath(segments, length, wiggle, twist){
+  // random phases + amplitude so every journey's tubes bend differently
+  const ph1=Math.random()*Math.PI*2, ph2=Math.random()*Math.PI*2;
+  const wm=0.85+Math.random()*0.35;
   const pts=[];
   for(let i=0;i<=segments;i++){
     const t=i/segments, z=-t*length;
-    const x=Math.sin(t*Math.PI*twist)*wiggle+Math.sin(t*7.0)*wiggle*0.25;
-    const y=Math.cos(t*Math.PI*twist*0.8)*wiggle*0.7+Math.sin(t*5.0)*wiggle*0.18;
+    const x=Math.sin(t*Math.PI*twist+ph1)*wiggle*wm+Math.sin(t*7.0+ph2)*wiggle*0.25;
+    const y=Math.cos(t*Math.PI*twist*0.8+ph2)*wiggle*0.7*wm+Math.sin(t*5.0+ph1)*wiggle*0.18;
     pts.push(new THREE.Vector3(x,y,z));
   }
   return new THREE.CatmullRomCurve3(pts);
@@ -1162,6 +1268,37 @@ function decorBlood(group, path, rad, stage){
   group.add(rbc);
   dynamicObjs.push({type:"rbc", obj:rbc, path, data, rad, m:new THREE.Matrix4(), s:flatScale});
 
+  // white blood cells — big pale bumpy spheres, rare (immune patrol!)
+  const wbcMat=new THREE.MeshPhysicalMaterial({color:0xe8e2d6, roughness:0.6,
+    clearcoat:0.3, clearcoatRoughness:0.3, emissive:0x262018});
+  const WB=4;
+  const wbc=new THREE.InstancedMesh(noisyBlob(new THREE.SphereGeometry(0.55,14,12),5,0.18), wbcMat, WB);
+  const wdata=[], wScale=new THREE.Vector3(1,1,1);
+  for(let i=0;i<WB;i++){
+    const t=Math.random();
+    const off=new THREE.Vector3((Math.random()-0.5),(Math.random()-0.5),(Math.random()-0.5)).multiplyScalar(rad*0.9);
+    qq.setFromEuler(new THREE.Euler(Math.random()*6,Math.random()*6,Math.random()*6));
+    mm.compose(path.getPointAt(t).clone().add(off), qq, wScale); wbc.setMatrixAt(i,mm);
+    wdata.push({t, off, q:qq.clone(), spin:0.012});
+  }
+  group.add(wbc);
+  dynamicObjs.push({type:"rbc", obj:wbc, path, data:wdata, rad, m:new THREE.Matrix4(), s:wScale});
+
+  // platelets — tiny golden shards drifting with the flow
+  const plMat=new THREE.MeshStandardMaterial({color:0xe7c66a, roughness:0.5, emissive:0x4a3a10});
+  const PL=90;
+  const pl=new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.09), plMat, PL);
+  const pdata=[], pScale=new THREE.Vector3(1,1,1);
+  for(let i=0;i<PL;i++){
+    const t=Math.random();
+    const off=new THREE.Vector3((Math.random()-0.5),(Math.random()-0.5),(Math.random()-0.5)).multiplyScalar(rad*1.2);
+    qq.setFromEuler(new THREE.Euler(Math.random()*6,Math.random()*6,Math.random()*6));
+    mm.compose(path.getPointAt(t).clone().add(off), qq, pScale); pl.setMatrixAt(i,mm);
+    pdata.push({t, off, q:qq.clone(), spin:0.04});
+  }
+  group.add(pl);
+  dynamicObjs.push({type:"rbc", obj:pl, path, data:pdata, rad, m:new THREE.Matrix4(), s:pScale});
+
   saliva(group, path, rad, 0xffd0d0, 80, 0.055);
   const plasma =new THREE.PointLight(0xff5050,1.2,22,1.8); group.add(plasma);
   dynamicObjs.push({type:"churnlight", obj:plasma, path});
@@ -1192,6 +1329,38 @@ function decorKidney(group, path, rad, stage){
     }
   }
   knots.count=idx; group.add(knots);
+
+  // --- THE GLOMERULUS GATE: a tangled knot of vessels you get filtered through ---
+  const gT=0.58, gp=path.getPointAt(gT), gtan=path.getTangentAt(gT);
+  const gate=new THREE.Group(); gate.position.copy(gp);
+  gate.lookAt(gp.clone().add(gtan));
+  const vesselMat=new THREE.MeshPhysicalMaterial({color:0xc23a3a, roughness:0.5,
+    clearcoat:0.5, clearcoatRoughness:0.25, emissive:0x300808});
+  for(let i=0;i<7;i++){
+    // torus-knot strands keep a clear hole in the middle for you to pass through
+    const tk=new THREE.Mesh(new THREE.TorusKnotGeometry(rad*0.62, 0.09+Math.random()*0.05, 64, 8, 2+(i%3), 3), vesselMat);
+    tk.rotation.set(Math.random()*3,Math.random()*3,Math.random()*3);
+    tk.scale.setScalar(0.9+Math.random()*0.3);
+    gate.add(tk);
+  }
+  group.add(gate);
+  dynamicObjs.push({type:"throb", obj:gate, base:gate.scale.clone(), spd:2.2, amp:0.04});
+  const gateGlow=new THREE.PointLight(0xffc83a,1.4,16,2); gateGlow.position.copy(gp); group.add(gateGlow);
+
+  // golden filtrate motes only AFTER the gate — you've been filtered into urine
+  const FN=140, fgeo=new THREE.BufferGeometry(), farr=new Float32Array(FN*3), fmeta=[];
+  for(let i=0;i<FN;i++){
+    const t=gT+0.02+Math.random()*(0.98-gT);
+    const p=path.getPointAt(t);
+    const off=new THREE.Vector3((Math.random()-0.5),(Math.random()-0.5),(Math.random()-0.5)).multiplyScalar(rad*0.8);
+    farr[i*3]=p.x+off.x; farr[i*3+1]=p.y+off.y; farr[i*3+2]=p.z+off.z;
+    fmeta.push({base:new THREE.Vector3(farr[i*3],farr[i*3+1],farr[i*3+2]), ph:Math.random()*6.28, sp:0.5+Math.random()});
+  }
+  fgeo.setAttribute('position',new THREE.BufferAttribute(farr,3));
+  group.add(new THREE.Points(fgeo, new THREE.PointsMaterial({color:0xffd84a, size:0.16,
+    transparent:true, opacity:0.9, depthWrite:false, blending:THREE.AdditiveBlending})));
+  dynamicObjs.push({type:"motes", meta:fmeta, arr:farr, geo:fgeo});
+
   acidBubbles(group, path, rad, 0xf0c24a, 100);
   const filtLight=new THREE.PointLight(0xf0c040,1.0,22,2); group.add(filtLight);
   dynamicObjs.push({type:"churnlight", obj:filtLight, path});
@@ -1537,14 +1706,15 @@ function decorToilet(group, path, stage){
     group.add(r); ripples.push(r);
   }
   // pee = many yellow droplets; poop = water spray flung up by the impact
-  const DROPS=isPee?240:150;
+  const DROPS=isPee?240:(hasRuns?280:150);
+  const sprayMul=(!isPee&&hasRuns)?1.35:1;   // loose landing = bigger, wider spray
   const dropGeo=new THREE.BufferGeometry();
   const dpos=new Float32Array(DROPS*3);
   const dvel=[];
   for(let i=0;i<DROPS;i++){
     dpos[i*3]=0; dpos[i*3+1]=waterY; dpos[i*3+2]=cz;
-    const ang=Math.random()*Math.PI*2, sp=(isPee?1.0:1.6)+Math.random()*(isPee?2.2:3.4);
-    dvel.push(new THREE.Vector3(Math.cos(ang)*sp, (isPee?2.5:3.5)+Math.random()*(isPee?4:6), Math.sin(ang)*sp));
+    const ang=Math.random()*Math.PI*2, sp=((isPee?1.0:1.6)+Math.random()*(isPee?2.2:3.4))*sprayMul;
+    dvel.push(new THREE.Vector3(Math.cos(ang)*sp, ((isPee?2.5:3.5)+Math.random()*(isPee?4:6))*sprayMul, Math.sin(ang)*sp));
   }
   dropGeo.setAttribute('position',new THREE.BufferAttribute(dpos,3));
   const drops=new THREE.Points(dropGeo,
@@ -1605,7 +1775,9 @@ function triggerSplash(){
   s.triggered=true; s.time=0;
   if(window.Audio3D){
     if(s.kind==="pee") Audio3D.pee();
-    else Audio3D.plop();
+    else { Audio3D.plop(); if(hasRuns) setTimeout(()=>Audio3D.splash(),140); }
+    // …beat… then the cat reacts
+    setTimeout(()=>Audio3D.meow(), s.kind==="pee"?1900:1200);
   }
   screenRipple(s.kind);
 }
@@ -1814,7 +1986,23 @@ function startStage(i){
   setAvatar(stage);
   updateHUD(stage);
   if(window.Audio3D) Audio3D.setStage(stage.id);
+  // surprise-event + diarrhea banners
+  if(journeyEvent && stage.id===journeyEvent.stage){
+    if(journeyEvent.speed) stage.speedScale=(stage.speedScale||1)*journeyEvent.speed;
+    setTimeout(()=>showToast(journeyEvent.title, journeyEvent.text),900);
+  }
+  if(hasRuns && stage.id==="large")
+    setTimeout(()=>showToast("Uh oh…","Everything is speeding up — the colon can't keep up!"),900);
   irisOpen(stage.wall);
+}
+
+let toastTimer=null;
+function showToast(title,text){
+  const el=document.getElementById('toast');
+  document.getElementById('toast-t').textContent=title;
+  document.getElementById('toast-x').textContent=text;
+  el.classList.add('on');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('on'),5200);
 }
 
 function nextStage(){
@@ -1853,13 +2041,26 @@ function makeBolus(hex){
   const m=new THREE.Mesh(geo, mat);
   return m;
 }
-/* classic coiled "soft-serve" poop — stacked tapering bumpy blobs + tip */
-function makePoop(){
+/* classic coiled "soft-serve" poop — stacked tapering bumpy blobs + tip.
+   loose=true → a wet splatty pile instead (diarrhea) */
+function makePoop(loose){
   const g=new THREE.Group();
   const mat=new THREE.MeshPhysicalMaterial({
-    color:0x5e3a1c, roughness:0.5, metalness:0.0,
-    clearcoat:0.55, clearcoatRoughness:0.3, emissive:0x140a04
+    color:loose?0x6b4423:0x5e3a1c, roughness:loose?0.28:0.5, metalness:0.0,
+    clearcoat:loose?0.85:0.55, clearcoatRoughness:loose?0.12:0.3, emissive:0x140a04
   });
+  if(loose){
+    const base=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.78,20,16),4,0.22), mat);
+    base.scale.set(1.25,0.42,1.15); g.add(base);
+    const mid=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.5,16,12),5,0.25), mat);
+    mid.scale.set(1.0,0.5,0.9); mid.position.y=0.26; g.add(mid);
+    for(let i=0;i<5;i++){ const a=i/5*Math.PI*2;   // splatter satellites
+      const blob=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.16+Math.random()*0.1,10,8),5,0.3), mat);
+      blob.scale.y=0.45;
+      blob.position.set(Math.cos(a)*(0.7+Math.random()*0.25),-0.08,Math.sin(a)*(0.7+Math.random()*0.25));
+      g.add(blob); }
+    return g;
+  }
   const layers=[[-0.55,0.66],[-0.12,0.56],[0.28,0.44],[0.60,0.30],[0.84,0.17]];
   layers.forEach((L,i)=>{
     const s=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(L[1],18,14),5,0.10), mat);
@@ -2046,11 +2247,11 @@ function avatarSpec(stage){
 }
 function setAvatar(stage){
   const spec=avatarSpec(stage);
-  const key=spec.kind+":"+spec.color+":"+(chosenFood?chosenFood.name:"");
+  const key=spec.kind+":"+spec.color+":"+(chosenFood?chosenFood.name:"")+(hasRuns?":runs":"");
   if(key===avatarKey && foodAvatar) return;
   avatarKey=key;
   if(foodAvatar){ scene.remove(foodAvatar); disposeGroup(foodAvatar); foodAvatar=null; }
-  foodAvatar = spec.kind==="poop" ? makePoop()
+  foodAvatar = spec.kind==="poop" ? makePoop(hasRuns)
              : spec.kind==="drop" ? makeDrop(spec.color)
              : spec.kind==="food" ? makeFoodModel(chosenFood)
              : makeBolus(spec.color);
@@ -2073,8 +2274,7 @@ function animate(){
       travelT+=(dt/baseDur)*speedMul*nearEnd*stageSpeed;
       elapsedSeconds+=(dt/baseDur)*speedMul*nearEnd*stageSpeed*stage.secs;
       if(travelT>=1){ travelT=1;
-        if(stage.decor==="toilet"){ playing=false; document.getElementById('c-done').classList.add('on');
-          if(window.Audio3D) Audio3D.meow(); }   // the cat greets you at the end
+        if(stage.decor==="toilet"){ playing=false; document.getElementById('c-done').classList.add('on'); }
         else nextStage();
       }
     }
@@ -2106,7 +2306,12 @@ function animate(){
         s.stream.position.set(Math.sin(time*7)*0.06, (dropTop+bottom)/2, cz);
       } else if(foodAvatar){
         /* ---- SOLID: the poop drops in ---- */
-        if(s && !s.fartPlayed && t>0.04){ s.fartPlayed=true; if(window.Audio3D) Audio3D.fart(); } // brrrt on release
+        if(s && !s.fartPlayed && t>0.04){ s.fartPlayed=true;       // brrrt on release
+          if(window.Audio3D){
+            Audio3D.fart({wet:hasRuns, big:(foodTr.fib||0)>=1.2});
+            if(journeyEvent&&journeyEvent.fart2) setTimeout(()=>Audio3D.fart({big:true}),650);
+          }
+        }
         const fallT=Math.min(t/0.60,1);            // lands as splash triggers (t>0.60)
         const y1=wy+0.5;
         foodAvatar.visible=!(s&&s.triggered);
@@ -2264,7 +2469,38 @@ function refreshLaunch(){
 function begin(){
   Audio3D.init();
   isLiquid=chosenFood.type==="liquid";
+  foodTr=chosenFood.tr||{};
+  Audio3D.setFood({crunch:foodTr.crunch, grease:foodTr.grease});
+
+  // roll the dice: greasy foods risk a too-fast colon (diarrhea)…
+  hasRuns = !isLiquid && Math.random() < 0.04+(foodTr.grease||0)*0.45;
+  // …and sometimes a surprise event spices up the trip
+  journeyEvent=null;
+  if(!hasRuns && Math.random()<0.35){
+    const evs = isLiquid
+      ? [{stage:"blood",     title:"Rush hour!",    text:"The heart kicks into high gear — blood is racing today.", speed:1.5},
+         {stage:"bladder",   title:"Almost there…", text:"The bladder is filling fast. Hold on!", speed:1.4}]
+      : [{stage:"stomach",   title:"Spicy surprise!", text:"There was hot sauce in that bite — the stomach churns extra hard!", speed:1.6},
+         {stage:"large",     title:"Gas attack!",     text:"Your gut bacteria are partying back here — extra gas is brewing…", fart2:true},
+         {stage:"esophagus", title:"Big swallow!",    text:"Down in one gulp — peristalsis at full power.", speed:1.5}];
+    journeyEvent=evs[Math.floor(Math.random()*evs.length)];
+  }
+
   stages=isLiquid?liquidStages():solidStages();
+  // apply the food's digestion traits to the journey
+  stages.forEach(s=>{
+    if(s.id==="stomach" && foodTr.stom) s.secs*=foodTr.stom;
+    if(foodTr.rush && s.decor!=="toilet") s.speedScale=(s.speedScale||1)*foodTr.rush;
+    if(foodTr.note && foodTr.note[s.id])
+      s.fact[1]+=`<br><br><b>${chosenFood.emoji} ${chosenFood.name}:</b> ${foodTr.note[s.id]}`;
+  });
+  if(hasRuns){
+    const li=stages.find(s=>s.id==="large");
+    if(li){ li.speedScale=(li.speedScale||1)*2.0;
+      li.fact=["UH OH — THIS IS MOVING TOO FAST!",
+        "Something upset the gut (greasy food does this!) and the colon is <b>rushing</b>. There's no time to absorb the water back out of you — which means you're coming out <b>loose</b>. That's all <b>diarrhea</b> is: waste that travelled too fast to dry out. Drink extra water afterwards!"]; }
+    const re=stages.find(s=>s.id==="rectum"); if(re) re.speedScale=(re.speedScale||1)*1.5;
+  }
   elapsedSeconds=0; yaw=0; pitch=0; playing=true; speedMul=1; hintHidden=false;
   document.getElementById('c-speed').value=1;
   document.getElementById('c-play').textContent="❚❚ Pause";
@@ -2291,12 +2527,18 @@ function finish(){
     :`As <b>${chosenFood.name}</b>, you were chewed, drowned in acid, stripped of every nutrient across a tennis-court of intestinal lining, dried out in the colon, and finally expelled.`;
   const transit=isP?"~2–4 hours":"1–3 days";
   const ph=isP?"2.0 → 7.4":"6.8 → 2.0 → 7.5";
+  const caffe=/^(Coffee|Soda)$/.test(chosenFood.name);
+  const verdict=isP
+    ?`<div class="stat"><div class="sk">Urine report</div><div class="sv">${caffe?"Extra flow ☕":"Pale &amp; healthy ✓"}</div></div>`
+    :`<div class="stat"><div class="sk">Consistency</div><div class="sv">${hasRuns?"Loose 💦":"Well-formed ✓"}</div></div>`;
   document.getElementById('end-grid').innerHTML=`
     <div class="stat"><div class="sk">You were</div><div class="sv">${chosenFood.emoji} ${chosenFood.name}</div></div>
     <div class="stat"><div class="sk">Real transit time</div><div class="sv bio">${transit}</div></div>
     <div class="stat"><div class="sk">Organs visited</div><div class="sv">${stages.length-1}</div></div>
-    <div class="stat"><div class="sk">pH you endured</div><div class="sv">${ph}</div></div>`;
-  document.getElementById('end-note').innerHTML=isP
+    <div class="stat"><div class="sk">pH you endured</div><div class="sv">${ph}</div></div>${verdict}`;
+  document.getElementById('end-note').innerHTML=hasRuns
+    ?"Fun fact: diarrhea is just waste that moved too fast for the colon to absorb its water. Drink extra water!"
+    :isP
     ?"Fun fact: your whole blood supply is filtered by the kidneys about every 5 minutes."
     :"Fun fact: your small intestine alone has the absorptive surface area of a tennis court.";
   document.getElementById('end').style.display='flex';
