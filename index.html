@@ -233,7 +233,7 @@
       <div class="fx" id="fact-text"></div>
     </div>
     <div class="hint" id="hint">Drag to look around · sound on · you travel automatically</div>
-    <button class="done-btn" id="c-done">See my journey summary ✓</button>
+    <button class="done-btn" id="c-done">Done ✓</button>
     <div class="controls">
       <button class="cbtn act" id="c-play">❚❚ Pause</button>
       <div class="speed"><span class="spd-l">SPEED</span> <input type="range" id="c-speed" min="0.3" max="2.4" step="0.1" value="1"></div>
@@ -1327,9 +1327,9 @@ function makeMinifig(host){
     const foot=new THREE.Mesh(new THREE.BoxGeometry(0.56,0.28,0.86), shoe);
     foot.position.set(x,0.14,1.42); g.add(foot);
   });
-  // hips / butt — sitting low between the heels; this is the exit
-  const hips=new THREE.Mesh(new THREE.BoxGeometry(1.22,0.66,0.78), pants);
-  hips.position.set(0,0.86,-0.04); g.add(hips);
+  // hips / butt — recessed behind the thighs so nothing pokes out the front
+  const hips=new THREE.Mesh(new THREE.BoxGeometry(1.2,0.7,0.5), pants);
+  hips.position.set(0,0.82,-0.24); g.add(hips);
 
   // --- torso (trapezoid) over the hips, leaning back ---
   const torsoGeo=new THREE.BoxGeometry(1.22,1.5,0.72);
@@ -1342,8 +1342,8 @@ function makeMinifig(host){
   [-1,1].forEach(s=>{
     const arm=new THREE.Mesh(new THREE.CylinderGeometry(0.19,0.21,1.28,14), shirt);
     arm.position.set(s*0.7,1.5,0.62); arm.rotation.set(-1.15,0,s*0.14); g.add(arm);
-    const hand=new THREE.Mesh(new THREE.TorusGeometry(0.15,0.07,10,18), skin);
-    hand.position.set(s*0.5,1.42,1.2); hand.rotation.x=Math.PI/2; g.add(hand);
+    const hand=new THREE.Mesh(new THREE.TorusGeometry(0.14,0.06,10,18), skin);
+    hand.position.set(s*0.46,1.4,1.12); hand.rotation.x=Math.PI/2; g.add(hand);
   });
 
   // --- head: cylinder + rounded top + stud (lowered to match the deep squat) ---
@@ -1366,6 +1366,32 @@ function makeMinifig(host){
   hair.position.set(0,3.55,-0.06); hair.scale.set(1.06,1.0,1.08); g.add(hair);
   if(isW){ [-1,1].forEach(s=>{ const lock=new THREE.Mesh(new THREE.BoxGeometry(0.2,0.72,0.5), hairM);
     lock.position.set(s*0.5,3.14,-0.1); g.add(lock); }); }
+  return g;
+}
+/* a pedestal sink to round out the bathroom */
+function makeSink(){
+  const g=new THREE.Group();
+  const porc=new THREE.MeshPhysicalMaterial({color:0xeef2f3, roughness:0.22, metalness:0.0,
+    clearcoat:0.55, clearcoatRoughness:0.1, side:THREE.DoubleSide});
+  const chrome=new THREE.MeshStandardMaterial({color:0xc9d2d6, roughness:0.25, metalness:0.9});
+  // pedestal column
+  const ped=new THREE.Mesh(new THREE.CylinderGeometry(0.9,1.5,6.2,24), porc);
+  ped.position.y=3.1; g.add(ped);
+  // basin — wide tapered bowl, slightly oval (shorter front-to-back)
+  const basin=new THREE.Mesh(new THREE.CylinderGeometry(2.4,1.5,1.7,32), porc);
+  basin.position.y=6.9; basin.scale.z=0.82; g.add(basin);
+  const rim=new THREE.Mesh(new THREE.TorusGeometry(2.35,0.22,14,40), porc);
+  rim.rotation.x=Math.PI/2; rim.position.y=7.75; rim.scale.z=0.82; g.add(rim);
+  // hollowed-out inside
+  const inner=new THREE.Mesh(new THREE.CylinderGeometry(2.05,1.25,1.2,32),
+    new THREE.MeshStandardMaterial({color:0xd7e0e2, roughness:0.4, side:THREE.DoubleSide}));
+  inner.position.y=7.15; inner.scale.z=0.82; g.add(inner);
+  // faucet + spout at the back
+  const fb=new THREE.Mesh(new THREE.BoxGeometry(0.6,0.55,0.6), chrome); fb.position.set(0,7.95,-1.35); g.add(fb);
+  const spout=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.13,1.2,12), chrome);
+  spout.position.set(0,8.35,-1.05); spout.rotation.x=0.7; g.add(spout);
+  [-0.45,0.45].forEach(x=>{ const knob=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.12,0.22,10), chrome);
+    knob.position.set(x,8.0,-1.2); g.add(knob); });
   return g;
 }
 /* a hand-drawn fan-style concert poster (no photos) for the bathroom wall */
@@ -1447,6 +1473,10 @@ function decorToilet(group, path, stage){
   const figLight=new THREE.PointLight(0xfff2e2,0.6,30,2.0);
   figLight.position.set(2,waterY+12,cz+7); group.add(figLight);
 
+  // ---- a pedestal sink in the back-right corner ----
+  const sink=makeSink();
+  sink.position.set(8.5, waterY-8.4, cz-5); sink.rotation.y=-0.5; group.add(sink);
+
   // ---- water surface (egg-shaped to fit the bowl) ----
   const waterCol=isPee?0xe7d76a:0xbcd2d6;   // urine sits visibly yellow
   const waterGeo=new THREE.CircleGeometry(2.95,64);
@@ -1471,7 +1501,7 @@ function decorToilet(group, path, stage){
   const backWall=new THREE.Mesh(new THREE.PlaneGeometry(60,46), tileMat);
   backWall.position.set(0,waterY+8,cz-11); group.add(backWall);
   // ---- Taylor Swift concert poster on the wall (left of the tank) ----
-  const px=-8.5, py=waterY+10.5, pz=cz-10.9;
+  const px=-12, py=waterY+10.5, pz=cz-10.9;
   const frame=new THREE.Mesh(new THREE.PlaneGeometry(7.7,10.5), new THREE.MeshStandardMaterial({color:0x141414, roughness:0.5}));
   frame.position.set(px,py,pz-0.02); group.add(frame);
   const posterMat=new THREE.MeshBasicMaterial({map:makePosterTexture()});  // drawn fallback
@@ -2058,11 +2088,11 @@ function animate(){
       // pull back far enough to frame the whole toilet AND the cat beside it;
       // widen further on narrow/portrait phones so nothing gets cropped
       const portrait = H()>=W();
-      const fov = portrait?76:50;
+      const fov = portrait?80:52;
       if(camera.fov!==fov){ camera.fov=fov; camera.updateProjectionMatrix(); }
-      camera.position.set(2.6, wy+8, cz + (portrait?34:32));
+      camera.position.set(2.6, wy+8, cz + (portrait?36:32));
       camera.up.set(0,1,0);
-      camera.lookAt(1.4, wy + (portrait?-1.0:-0.5), cz);
+      camera.lookAt(1.4, wy + (portrait?-1.2:-0.8), cz);
       camera.rotateY(yaw*0.4); camera.rotateX(pitch*0.4);
       const dropTop=(s&&s.figDropY!=null)?s.figDropY:(wy+3.2);   // beneath the figure
       if(s&&s.stream){
