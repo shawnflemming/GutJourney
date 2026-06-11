@@ -813,6 +813,7 @@ let yaw=0, pitch=0;
 let headlight=null, headFront=null, headBack=null, fillLight=null, rimLight=null;
 let chosenFood=null, chosenHost=null, isLiquid=false;
 let foodTr={}, hasRuns=false, journeyEvent=null;
+let mouthScene=null;
 let elapsedSeconds=0;
 let dynamicObjs=[];
 let transitioning=false;
@@ -998,7 +999,7 @@ function buildStage(stage){
     path=makePath(segs, len, wig, tw);
   }
 
-  if(d!=="toilet"){
+  if(d!=="toilet" && d!=="mouth"){
     /* main wall tube — high segment + radial count for crisp displacement */
     const geo=new THREE.TubeGeometry(path, segs, rad, 52, false);
     displaceTube(geo, amp, freq);
@@ -1076,7 +1077,7 @@ function buildStage(stage){
     group.add(endLight);
   }
 
-  if(d==="mouth")            decorMouth(group, path, rad, stage);
+  if(d==="mouth")            decorMouthScene(group, stage);
   else if(d==="tube_rib")    decorRings(group, path, rad, stage.accent, 30, 0.20, true);
   else if(d==="chamber_acid")decorStomach(group, path, rad, stage);
   else if(d==="villi")       decorVilli(group, path, rad, stage);
@@ -1132,101 +1133,80 @@ function decorRings(group, path, rad, color, count, thick, doAnimate){
   if(doAnimate) dynamicObjs.push({type:"peristalsis", obj:rings, path, rad});
 }
 
-/* --- mouth: a continuous upper + lower dental arch lining the front and
-   sides, a glossy realistic tongue on the floor, palate roof, uvula --- */
-function decorMouth(group, path, rad, stage){
-  const toothMat=new THREE.MeshPhysicalMaterial({
-    color:0xf4eddb, roughness:0.24, metalness:0.0,
-    clearcoat:0.92, clearcoatRoughness:0.07, emissive:0x141009
-  });
-  const gumMat=new THREE.MeshPhysicalMaterial({
-    color:0xd06f76, roughness:0.62, clearcoat:0.5, clearcoatRoughness:0.3, emissive:0x2a0c0e
-  });
-  // a single rounded peg-tooth, instanced; scaled per position into incisors/molars
-  const toothGeo=new THREE.CylinderGeometry(0.2,0.17,0.6,12); toothGeo.translate(0,0.3,0); // base at origin
-  const gumGeo=new THREE.SphereGeometry(0.27,10,8);
-  // bands of teeth around the ring: upper arch across the top, lower arch on
-  // each side of the tongue. [startDeg,endDeg,count]  (0°=right, 90°=up, 270°=down)
-  const bands=[ [18,162,8], [200,253,3], [287,340,3] ];
-  const steps=11;                       // rows of teeth running back along the jaw
-  let cap=0; bands.forEach(b=>cap+=b[2]); cap*=steps;
-  const teeth=new THREE.InstancedMesh(toothGeo, toothMat, cap);
-  const gums =new THREE.InstancedMesh(gumGeo,  gumMat,  cap);
-  const mm=new THREE.Matrix4(), q=new THREE.Quaternion(), sc=new THREE.Vector3();
-  const Y=new THREE.Vector3(0,1,0);
-  let idx=0;
-  for(let i=0;i<steps;i++){
-    const t=0.04+i*0.072;               // front (lips) → back (throat)
-    const p=path.getPointAt(t);
-    const front=1-i/steps;              // 1 at the front, 0 at the back
-    bands.forEach(([a0,a1,count])=>{
-      for(let k=0;k<count;k++){
-        const ang=THREE.MathUtils.degToRad(a0+(a1-a0)*(k+0.5)/count);
-        const radial=new THREE.Vector3(Math.cos(ang),Math.sin(ang),0);
-        const inward=radial.clone().negate();
-        const wall=p.clone().addScaledVector(radial, rad*0.9);
-        q.setFromUnitVectors(Y, inward);          // tooth grows toward the cavity
-        // front teeth: taller, narrower incisors → back teeth: shorter, wider molars
-        const tall=0.95+front*0.55, wide=1.15-front*0.35;
-        sc.set(wide,tall,wide);
-        mm.compose(wall, q, sc); teeth.setMatrixAt(idx, mm);
-        mm.compose(wall, q, new THREE.Vector3(1.15,0.6,1.15)); gums.setMatrixAt(idx, mm); // gum collar
-        idx++;
-      }
-    });
+/* --- mouth: a FRONT-ON open mouth, viewed from outside like a face
+   (the camera looks in, instead of flying through a tube). Upper + lower
+   tooth arches, lips, tongue, throat + uvula. Centred on the origin. --- */
+function decorMouthScene(group, stage){
+  const skinMat  =new THREE.MeshStandardMaterial({color:0xe0a081, roughness:0.78});
+  const lipMat   =new THREE.MeshPhysicalMaterial({color:0xb85563, roughness:0.42, clearcoat:0.5, clearcoatRoughness:0.25});
+  const gumMat   =new THREE.MeshPhysicalMaterial({color:0xcf6f76, roughness:0.55, clearcoat:0.4, clearcoatRoughness:0.3, emissive:0x2a0c0e});
+  const toothMat =new THREE.MeshPhysicalMaterial({color:0xf5eedd, roughness:0.22, clearcoat:0.9, clearcoatRoughness:0.07, emissive:0x141009});
+  const cavityMat=new THREE.MeshStandardMaterial({color:0x6e2b30, roughness:0.85, side:THREE.DoubleSide, emissive:0x180608});
+  const throatMat=new THREE.MeshStandardMaterial({color:0x2c1014, roughness:0.9, side:THREE.DoubleSide, emissive:0x100406});
+  const tongueMat=new THREE.MeshPhysicalMaterial({color:0xc4525c, roughness:0.48, clearcoat:0.7, clearcoatRoughness:0.16, emissive:0x3a0c10});
+
+  const A=3.2, B=2.4;                       // mouth opening half-extents
+
+  // face skin filling the frame behind everything
+  const skin=new THREE.Mesh(new THREE.PlaneGeometry(46,34), skinMat);
+  skin.position.set(0,0,-2.4); group.add(skin);
+
+  // dark oral cavity behind the teeth (so gaps never show skin) + recessed dome
+  const cav=new THREE.Mesh(new THREE.CircleGeometry(1,48), cavityMat);
+  cav.scale.set(A*1.05,B*1.05,1); cav.position.set(0,0,-1.7); group.add(cav);
+  const dome=new THREE.Mesh(new THREE.SphereGeometry(A*1.05,32,20,0,Math.PI*2,Math.PI*0.5,Math.PI*0.5), cavityMat);
+  dome.scale.set(1,1,B/A*1.3); dome.position.set(0,0,-1.7); group.add(dome);
+  // throat opening + uvula at the back centre
+  const throat=new THREE.Mesh(new THREE.CircleGeometry(0.85,32), throatMat);
+  throat.scale.set(1,1.1,1); throat.position.set(0,-0.1,-2.3); group.add(throat);
+  const uvula=new THREE.Mesh(new THREE.SphereGeometry(0.22,12,10), tongueMat);
+  uvula.scale.set(1,1.7,1); uvula.position.set(0,0.95,-2.0); group.add(uvula);
+  dynamicObjs.push({type:"throb", obj:uvula, amp:0.06, base:uvula.scale.clone(), spd:1.0});
+
+  // lips — a fat oval ring framing the opening
+  const lips=new THREE.Mesh(new THREE.TorusGeometry(1,0.36,20,72), lipMat);
+  lips.scale.set(A*1.04,B*1.04,1.4); lips.position.set(0,0,0.2); group.add(lips);
+
+  // gum arcs behind each tooth row
+  const upGum=new THREE.Mesh(new THREE.TorusGeometry(1,0.3,12,48,Math.PI), gumMat);
+  upGum.scale.set(A*0.9,B*0.9,1); upGum.position.set(0,0,-0.2); group.add(upGum);
+  const loGum=new THREE.Mesh(new THREE.TorusGeometry(1,0.3,12,48,Math.PI), gumMat);
+  loGum.scale.set(A*0.9,B*0.9,1); loGum.rotation.z=Math.PI; loGum.position.set(0,0,-0.2); group.add(loGum);
+
+  // a row of teeth along an elliptical arc. dir=+1 upper (hang down), -1 lower
+  function jaw(dir){
+    const g=new THREE.Group(); const n=11;
+    for(let k=0;k<n;k++){
+      const frac=k/(n-1);
+      const deg = dir>0 ? (162 - 144*frac) : (198 + 144*frac);   // top arc / bottom arc
+      const a=THREE.MathUtils.degToRad(deg);
+      const x=Math.cos(a)*A*0.82, y=Math.sin(a)*B*0.82;
+      const center=1-Math.min(Math.abs(x)/(A*0.82),1);           // 1 at front, 0 at sides
+      const w=0.32+center*0.36, h=0.62+center*0.6, d=0.42;
+      const tooth=new THREE.Mesh(new THREE.BoxGeometry(w,h,d), toothMat);
+      tooth.position.set(x, y - dir*h*0.42, 0.05);               // crown tucked toward the gap
+      tooth.rotation.z=-x*0.05;                                  // slight outward splay
+      g.add(tooth);
+    }
+    group.add(g); return g;
   }
-  teeth.count=idx; gums.count=idx;
-  group.add(gums); group.add(teeth);
+  const upper=jaw(1), lower=jaw(-1);
 
-  // palate — smooth roof arcing over the upper arch
-  const palate=new THREE.Mesh(new THREE.SphereGeometry(rad*1.2,28,16),
-    new THREE.MeshPhysicalMaterial({color:0xd98a8a, roughness:0.58, clearcoat:0.4, clearcoatRoughness:0.3, emissive:0x2a0e0e}));
-  palate.scale.set(1.1,0.42,2.6);
-  palate.position.copy(path.getPointAt(0.4)).add(new THREE.Vector3(0, rad*0.95, 0));
-  group.add(palate);
-
-  // --- realistic tongue on the floor: long, glossy, domed, midline groove ---
-  const floorY = path.getPointAt(0.42).y - rad*0.74;
-  const tCx = path.getPointAt(0.42);
-  const tongueMat=new THREE.MeshPhysicalMaterial({
-    color:0xc34a55, roughness:0.48, metalness:0.0,
-    clearcoat:0.7, clearcoatRoughness:0.16, emissive:0x3a0c10
-  });
-  const tongue=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(rad*0.72,40,26),3.0,0.05), tongueMat);
-  tongue.scale.set(1.18,0.66,3.3);
-  tongue.position.set(tCx.x, floorY, tCx.z);
-  group.add(tongue);
-  dynamicObjs.push({type:"throb", obj:tongue, amp:0.03, base:tongue.scale.clone(), spd:1.3});
-  // rounded raised tip near the front
-  const tip=new THREE.Mesh(new THREE.SphereGeometry(rad*0.5,24,16), tongueMat);
-  tip.scale.set(1.1,0.6,0.9);
-  const tipP=path.getPointAt(0.1);
-  tip.position.set(tipP.x, floorY+rad*0.18, tipP.z); group.add(tip);
-  // midline groove down the centre of the tongue
-  const groove=new THREE.Mesh(new THREE.BoxGeometry(0.14,0.12,rad*4.0),
+  // tongue resting on the floor of the mouth, with a central groove
+  const tongue=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(1,40,26),3,0.04), tongueMat);
+  tongue.scale.set(A*0.6,B*0.42,1.3); tongue.position.set(0,-B*0.46,-0.5); group.add(tongue);
+  dynamicObjs.push({type:"throb", obj:tongue, amp:0.03, base:tongue.scale.clone(), spd:1.4});
+  const groove=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.1,1.7),
     new THREE.MeshPhysicalMaterial({color:0x8e3338, roughness:0.7, emissive:0x230608}));
-  groove.position.set(tCx.x, floorY+rad*0.46, tCx.z); group.add(groove);
-  // fine papillae bumps over the tongue surface
-  const papMat=new THREE.MeshPhysicalMaterial({color:0xc9555f, roughness:0.7, emissive:0x2a0809});
-  const pap=new THREE.InstancedMesh(new THREE.SphereGeometry(0.05,5,4), papMat, 240);
-  const pm=new THREE.Matrix4(), pq=new THREE.Quaternion(), ps=new THREE.Vector3();
-  for(let i=0;i<240;i++){
-    const lx=(Math.random()-0.5)*rad*1.25, lz=(Math.random()-0.5)*rad*3.0;
-    const y=floorY+rad*0.46 - (lx*lx)*0.03;          // follow the dome
-    const s2=0.5+Math.random()*0.9; ps.set(s2,s2,s2);
-    pm.compose(new THREE.Vector3(tCx.x+lx, y, tCx.z+lz), pq, ps); pap.setMatrixAt(i,pm);
-  }
-  group.add(pap);
+  groove.position.set(0,-B*0.46+B*0.42*0.92,0.1); group.add(groove);
 
-  // uvula dangling at the back
-  const uv=new THREE.Mesh(new THREE.SphereGeometry(0.34,12,10),
-    new THREE.MeshPhysicalMaterial({color:0xc96a70, roughness:0.72, clearcoat:0.5, emissive:0x2a0808}));
-  uv.scale.set(1,1.7,1);
-  uv.position.copy(path.getPointAt(0.92)).add(new THREE.Vector3(0, rad*0.78, 0));
-  group.add(uv);
-  dynamicObjs.push({type:"throb", obj:uv, amp:0.06, base:uv.scale.clone(), spd:0.9});
+  // front-on lighting
+  const key =new THREE.PointLight(0xfff2e6,1.2,46,2); key.position.set(2.5,3,9);  group.add(key);
+  const fill=new THREE.PointLight(0xffd9c0,0.55,46,2); fill.position.set(-3,-1.5,8); group.add(fill);
+  group.add(new THREE.HemisphereLight(0xffe9dc,0x3a1010,0.55));
+  scene.fog.color.set(0x2a1010); scene.fog.density=0.009;
 
-  saliva(group, path, rad, 0xf7f3df, 90, 0.07);
+  mouthScene={ upper, lower };
 }
 
 /* --- stomach: dramatic rugae + gastric pits + acid bubbles --- */
@@ -2082,7 +2062,7 @@ function irisOpen(wallHex){
    ============================================================ */
 function startStage(i){
   if(stageGroup){ scene.remove(stageGroup); disposeGroup(stageGroup); stageGroup=null; }
-  stageIndex=i; travelT=0; splashState=null;
+  stageIndex=i; travelT=0; splashState=null; mouthScene=null;
   const stage=stages[i];
 
   scene.fog.color.set(stage.fog);
@@ -2450,6 +2430,37 @@ function animate(){
         headFront.position.set(0, wy+3, cz+8); headFront.intensity=0.45;
         rimLight.position.set(0, wy+2, cz-6); rimLight.intensity=0.3;
       }
+    } else if(stage.decor==="mouth"){
+      /* ---- MOUTH: front-on, look INTO the open mouth like a face ---- */
+      const portrait = H()>=W();
+      const fov = portrait?78:52;
+      if(camera.fov!==fov){ camera.fov=fov; camera.updateProjectionMatrix(); }
+      camera.position.set(0, 0, portrait?12:9);
+      camera.up.set(0,1,0);
+      camera.lookAt(0,0,0);
+      camera.rotateY(yaw*0.3); camera.rotateX(pitch*0.3);
+      // the jaw chomps: the lower teeth rise to meet the upper
+      if(mouthScene){
+        const chomp=Math.abs(Math.sin(time*4.2));
+        mouthScene.lower.position.y =  chomp*0.55;
+        mouthScene.upper.position.y = -chomp*0.12;
+      }
+      if(foodAvatar){
+        foodAvatar.visible=true;
+        const chomp=Math.max(0,Math.sin(time*4.2));
+        const shrink=1-Math.min(t*0.6,0.5);   // chewed smaller as it goes
+        const baseSc=1.15*shrink;
+        foodAvatar.rotation.y+=dt*0.5;
+        if(t>0.82){                            // swallowed: slide back into the throat
+          const s2=(t-0.82)/0.18;
+          foodAvatar.position.set(0, -0.2 - s2*0.3, 0.2 - s2*2.6);
+          foodAvatar.scale.setScalar(baseSc*(1-s2*0.6));
+        } else {
+          foodAvatar.position.set(0, -0.2, 0.3);
+          foodAvatar.scale.set(baseSc*(1+chomp*0.12), baseSc*(1-chomp*0.32), baseSc*(1+chomp*0.12));
+        }
+      }
+      if(headlight){ headlight.intensity=0; headFront.intensity=0; headBack.intensity=0; fillLight.intensity=0; rimLight.intensity=0; }
     } else {
       /* ---- GI / URINARY TUBE: third-person, camera trails the food ---- */
       if(camera.fov!==74){ camera.fov=74; camera.updateProjectionMatrix(); }
