@@ -35,7 +35,7 @@ build command required.
 
 ## Media credits
 
-- `meow.wav` — ["Meow of a Siamese cat"](https://commons.wikimedia.org/wiki/File:Meow_of_a_Siamese_cat_-_freemaster2.wav), Wikimedia Commons, CC0 (public domain).
+- `meow.mp3` — ["Meow"](https://commons.wikimedia.org/wiki/File:Meow.ogg) by Dan Crosby, Wikimedia Commons, [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/).
 - `fart1.wav` — ["Human fart"](https://commons.wikimedia.org/wiki/File:Human_fart.wav) by Subhashish Panigrahi, Wikimedia Commons, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
 - `fart2.wav` — ["Flatulence"](https://commons.wikimedia.org/wiki/File:Flatulence.wav) by JohnSumisu, Wikimedia Commons, [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/).
 - `fart3.wav` — ["Flatus"](https://commons.wikimedia.org/wiki/File:Flatus.wav), Wikimedia Commons, [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/).

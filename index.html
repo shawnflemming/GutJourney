@@ -291,7 +291,7 @@ const Audio3D = (function(){
   function loadMeow(){
     if(meowBuf||meowTried||!ctx) return;
     meowTried=true;
-    loadClip('meow.wav', b=>{ meowBuf=b; }, ()=>{ meowTried=false; });
+    loadClip('meow.mp3', b=>{ meowBuf=b; }, ()=>{ meowTried=false; });
   }
   function loadFarts(){
     if(fartsTried||!ctx) return;
