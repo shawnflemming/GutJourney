@@ -281,13 +281,22 @@ const Audio3D = (function(){
   let curStage="", bubbleTimer=null, heartTimer=null, chewTimer=null;
   let foodSnd={crunch:0.4, grease:0.3};
   let meowBuf=null, meowTried=false;
-  /* a real cat meow (CC0, Wikimedia Commons) — decoded once, reused */
+  let fartBufs=[], fartsTried=false;
+  /* real recordings (Wikimedia Commons) — decoded once, reused */
+  function loadClip(url, ok, fail){
+    fetch(url).then(r=>{ if(!r.ok) throw 0; return r.arrayBuffer(); }).then(ab=>{
+      ctx.decodeAudioData(ab, ok, ()=>{ if(fail) fail(); });
+    }).catch(()=>{ if(fail) fail(); });
+  }
   function loadMeow(){
     if(meowBuf||meowTried||!ctx) return;
     meowTried=true;
-    fetch('meow.wav').then(r=>r.arrayBuffer()).then(ab=>{
-      ctx.decodeAudioData(ab, b=>{ meowBuf=b; }, ()=>{ meowTried=false; });
-    }).catch(()=>{ meowTried=false; });
+    loadClip('meow.wav', b=>{ meowBuf=b; }, ()=>{ meowTried=false; });
+  }
+  function loadFarts(){
+    if(fartsTried||!ctx) return;
+    fartsTried=true;
+    ['fart1.wav','fart2.wav','fart3.wav'].forEach(u=>loadClip(u, b=>fartBufs.push(b)));
   }
   function setFood(p){ foodSnd={crunch:(p&&p.crunch!=null)?p.crunch:0.4, grease:(p&&p.grease!=null)?p.grease:0.3}; }
 
@@ -319,7 +328,7 @@ const Audio3D = (function(){
     rumbleOsc.connect(rumbleGain); rumbleGain.connect(master); rumbleOsc.start();
     started=true; alive=true;
     master.gain.linearRampToValueAtTime(muted?0:0.9, ctx.currentTime+1.2);
-    loadMeow();
+    loadMeow(); loadFarts();
   }
 
   function now(){ return ctx?ctx.currentTime:0; }
@@ -507,11 +516,32 @@ const Audio3D = (function(){
     setTimeout(()=>splash(),35);
   }
 
-  /* fart: a ragged burst of short low "putt" pulses — the classic brrrt.
-     opts: {big} = high-fibre food → longer/louder; {wet} = diarrhea → squelchy */
+  /* fart: plays a random real recording (big = prefer the long ones,
+     wet = squelchy noise layered under it). Falls back to a synthesized
+     burst of short low "putt" pulses if the files couldn't load. */
   function fart(opts){
     if(!ctx||muted) return;
     const big=!!(opts&&opts.big), wet=!!(opts&&opts.wet);
+    if(fartBufs.length){
+      const longs=fartBufs.filter(b=>b.duration>=2);
+      const pool=(big&&longs.length)?longs:fartBufs;
+      const buf=pool[Math.floor(Math.random()*pool.length)];
+      const src=ctx.createBufferSource(); src.buffer=buf;
+      const g=ctx.createGain(); g.gain.value=big?1.0:0.85;
+      src.connect(g); g.connect(master); src.start(now());
+      if(wet){ // squelchy under-layer matched to the recording's length
+        const t=now(), wd=Math.min(buf.duration,1.2);
+        const ns=ctx.createBufferSource(); ns.buffer=makeNoiseBuffer();
+        const f=ctx.createBiquadFilter(); f.type='lowpass'; f.frequency.setValueAtTime(300,t);
+        f.frequency.exponentialRampToValueAtTime(120,t+wd); f.Q.value=3;
+        const ng=ctx.createGain(); ng.gain.setValueAtTime(0.0001,t);
+        ng.gain.linearRampToValueAtTime(0.3,t+0.05);
+        ng.gain.exponentialRampToValueAtTime(0.0001,t+wd+0.1);
+        ns.connect(f); f.connect(ng); ng.connect(master); ns.start(t); ns.stop(t+wd+0.15);
+      }
+      return;
+    }
+    loadFarts();   // retry for next time, then synthesize this one
     const t0=now();
     const n=9+Math.floor(Math.random()*4)+(big?5:0)+(wet?5:0);
     let tt=t0;

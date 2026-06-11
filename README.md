@@ -32,3 +32,12 @@ Or just open `index.html` directly in a browser.
 This is a static site. On [Vercel](https://vercel.com), import the repo and deploy
 with the default settings — `index.html` is served at the root, no framework or
 build command required.
+
+## Media credits
+
+- `meow.wav` — ["Meow of a Siamese cat"](https://commons.wikimedia.org/wiki/File:Meow_of_a_Siamese_cat_-_freemaster2.wav), Wikimedia Commons, CC0 (public domain).
+- `fart1.wav` — ["Human fart"](https://commons.wikimedia.org/wiki/File:Human_fart.wav) by Subhashish Panigrahi, Wikimedia Commons, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
+- `fart2.wav` — ["Flatulence"](https://commons.wikimedia.org/wiki/File:Flatulence.wav) by JohnSumisu, Wikimedia Commons, [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/).
+- `fart3.wav` — ["Flatus"](https://commons.wikimedia.org/wiki/File:Flatus.wav), Wikimedia Commons, [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/).
+- Bathroom poster — ["Taylor Swift at the 2023 MTV Video Music Awards"](https://commons.wikimedia.org/wiki/File:Taylor_Swift_at_the_2023_MTV_Video_Music_Awards_(2)_(cropped).png) by iHeartRadioCA, Wikimedia Commons, [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) (loaded at runtime).
+- [Three.js](https://threejs.org/) r128, MIT license (vendored as `three.min.js`).
