@@ -280,6 +280,15 @@ const Audio3D = (function(){
   let started=false, muted=false, alive=false;
   let curStage="", bubbleTimer=null, heartTimer=null, chewTimer=null;
   let foodSnd={crunch:0.4, grease:0.3};
+  let meowBuf=null, meowTried=false;
+  /* a real cat meow (CC0, Wikimedia Commons) — decoded once, reused */
+  function loadMeow(){
+    if(meowBuf||meowTried||!ctx) return;
+    meowTried=true;
+    fetch('meow.wav').then(r=>r.arrayBuffer()).then(ab=>{
+      ctx.decodeAudioData(ab, b=>{ meowBuf=b; }, ()=>{ meowTried=false; });
+    }).catch(()=>{ meowTried=false; });
+  }
   function setFood(p){ foodSnd={crunch:(p&&p.crunch!=null)?p.crunch:0.4, grease:(p&&p.grease!=null)?p.grease:0.3}; }
 
   function makeNoiseBuffer(){
@@ -310,6 +319,7 @@ const Audio3D = (function(){
     rumbleOsc.connect(rumbleGain); rumbleGain.connect(master); rumbleOsc.start();
     started=true; alive=true;
     master.gain.linearRampToValueAtTime(muted?0:0.9, ctx.currentTime+1.2);
+    loadMeow();
   }
 
   function now(){ return ctx?ctx.currentTime:0; }
@@ -533,10 +543,17 @@ const Audio3D = (function(){
     }
   }
 
-  /* meow: voice-style synthesis — soft "m", open "eee", closing "ow",
-     shaped by two vocal-tract formant filters in parallel */
+  /* meow: plays the real recorded cat (meow.wav); falls back to
+     voice-style synthesis if the file couldn't load */
   function meow(){
     if(!ctx||muted) return;
+    if(meowBuf){
+      const src=ctx.createBufferSource(); src.buffer=meowBuf;
+      const g=ctx.createGain(); g.gain.value=0.9;
+      src.connect(g); g.connect(master); src.start(now());
+      return;
+    }
+    loadMeow();   // retry for next time, then synthesize this one
     const t=now(), D=0.85;
     const o1=ctx.createOscillator(); o1.type='triangle';   // fundamental (soft, vocal)
     const o2=ctx.createOscillator(); o2.type='sawtooth';   // quiet octave for body
