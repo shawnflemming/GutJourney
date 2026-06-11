@@ -458,6 +458,7 @@ const FOODS = [
   { emoji:"🌮", name:"Taco",      type:"solid",  color:0xd9a441 },
   { emoji:"🥩", name:"Steak",     type:"solid",  color:0x7a3b2e },
   { emoji:"🍝", name:"Pasta",     type:"solid",  color:0xe3c98f },
+  { emoji:"🐱", name:"Kitten",    type:"solid",  color:0x3a3a42 },
   { emoji:"💧", name:"Water",     type:"liquid", color:0x9fd4e0 },
   { emoji:"🥤", name:"Soda",      type:"liquid", color:0x6a3a1a },
   { emoji:"🧃", name:"Juice",     type:"liquid", color:0xe08a2a },
@@ -1255,52 +1256,86 @@ function makeMinifig(host){
   const skin =new THREE.MeshStandardMaterial({color:0xf4c20d, roughness:0.42, metalness:0.0});
   const shirt=new THREE.MeshStandardMaterial({color:isW?0xe8568f:0x2f7fd0, roughness:0.5});
   const pants=new THREE.MeshStandardMaterial({color:0x394a5a, roughness:0.5});
+  const shoe =new THREE.MeshStandardMaterial({color:0x20262e, roughness:0.6});
   const blackM=new THREE.MeshBasicMaterial({color:0x1a1a1a});
 
-  // legs (two blocks with a gap) + hips
-  [-0.28,0.28].forEach(x=>{
-    const leg=new THREE.Mesh(new THREE.BoxGeometry(0.5,1.5,0.62), pants);
-    leg.position.set(x,0.75,0); g.add(leg);
-  });
-  const hips=new THREE.Mesh(new THREE.BoxGeometry(1.16,0.5,0.66), pants);
-  hips.position.set(0,1.75,0); g.add(hips);
-
-  // torso — trapezoid, narrower at the shoulders
-  const torsoGeo=new THREE.BoxGeometry(1.22,1.6,0.72);
-  const tp=torsoGeo.attributes.position;
-  for(let i=0;i<tp.count;i++){ if(tp.getY(i)>0){ tp.setX(i,tp.getX(i)*0.8); tp.setZ(i,tp.getZ(i)*0.92); } }
-  tp.needsUpdate=true; torsoGeo.computeVertexNormals();
-  const torso=new THREE.Mesh(torsoGeo, shirt); torso.position.set(0,2.85,0); g.add(torso);
-
-  // arms angled down-forward + ring hands
+  // --- squatting legs: thighs forward, shins down, flat feet; butt sits low ---
   [-1,1].forEach(s=>{
-    const arm=new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.22,1.15,14), shirt);
-    arm.position.set(s*0.74,2.78,0.16); arm.rotation.set(-0.5,0,s*0.34); g.add(arm);
-    const hand=new THREE.Mesh(new THREE.TorusGeometry(0.16,0.07,10,18), skin);
-    hand.position.set(s*0.96,2.18,0.6); hand.rotation.x=Math.PI/2; g.add(hand);
+    const x=s*0.34;
+    const thigh=new THREE.Mesh(new THREE.BoxGeometry(0.52,0.52,1.3), pants);
+    thigh.position.set(x,1.18,0.5); thigh.rotation.x=0.34; g.add(thigh);   // knees pushed forward
+    const shin=new THREE.Mesh(new THREE.BoxGeometry(0.5,1.05,0.52), pants);
+    shin.position.set(x,0.58,1.02); g.add(shin);
+    const foot=new THREE.Mesh(new THREE.BoxGeometry(0.54,0.28,0.8), shoe);
+    foot.position.set(x,0.14,1.22); g.add(foot);
+  });
+  // hips / bottom — the exit, sitting low between the thighs
+  const hips=new THREE.Mesh(new THREE.BoxGeometry(1.2,0.62,0.72), pants);
+  hips.position.set(0,1.18,-0.06); g.add(hips);
+
+  // --- torso (trapezoid), leaning back a touch over the hips ---
+  const torsoGeo=new THREE.BoxGeometry(1.22,1.5,0.72);
+  const tp=torsoGeo.attributes.position;
+  for(let i=0;i<tp.count;i++){ if(tp.getY(i)>0){ tp.setX(i,tp.getX(i)*0.82); tp.setZ(i,tp.getZ(i)*0.92); } }
+  tp.needsUpdate=true; torsoGeo.computeVertexNormals();
+  const torso=new THREE.Mesh(torsoGeo, shirt); torso.position.set(0,2.2,-0.12); torso.rotation.x=-0.12; g.add(torso);
+
+  // arms resting forward on the knees
+  [-1,1].forEach(s=>{
+    const arm=new THREE.Mesh(new THREE.CylinderGeometry(0.19,0.21,1.2,14), shirt);
+    arm.position.set(s*0.72,1.92,0.46); arm.rotation.set(-0.95,0,s*0.16); g.add(arm);
+    const hand=new THREE.Mesh(new THREE.TorusGeometry(0.15,0.07,10,18), skin);
+    hand.position.set(s*0.66,1.36,1.04); hand.rotation.x=Math.PI/2; g.add(hand);
   });
 
-  // head: cylinder + rounded top + stud
-  const head=new THREE.Mesh(new THREE.CylinderGeometry(0.5,0.5,0.95,28), skin);
-  head.position.set(0,4.2,0); g.add(head);
+  // --- head: cylinder + rounded top + stud ---
+  const head=new THREE.Mesh(new THREE.CylinderGeometry(0.5,0.5,0.92,28), skin);
+  head.position.set(0,3.46,-0.04); g.add(head);
   const headTop=new THREE.Mesh(new THREE.SphereGeometry(0.5,24,16,0,Math.PI*2,0,Math.PI*0.5), skin);
-  headTop.position.set(0,4.67,0); g.add(headTop);
+  headTop.position.set(0,3.91,-0.04); g.add(headTop);
   const stud=new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.18,0.16,16), skin);
-  stud.position.set(0,4.94,0); g.add(stud);
+  stud.position.set(0,4.18,-0.04); g.add(stud);
 
-  // simple smiley face on the +z side
+  // smiley face on the +z side
   [-0.18,0.18].forEach(x=>{ const eye=new THREE.Mesh(new THREE.CircleGeometry(0.07,16), blackM);
-    eye.position.set(x,4.34,0.505); g.add(eye); });
+    eye.position.set(x,3.6,0.47); g.add(eye); });
   const smile=new THREE.Mesh(new THREE.TorusGeometry(0.16,0.03,8,18,Math.PI), blackM);
-  smile.position.set(0,4.14,0.505); smile.rotation.z=Math.PI; g.add(smile);
+  smile.position.set(0,3.38,0.47); smile.rotation.z=Math.PI; g.add(smile);
 
   // hair piece (differs by host)
   const hairM=new THREE.MeshStandardMaterial({color:isW?0x6b3a14:0x241510, roughness:0.7});
   const hair=new THREE.Mesh(new THREE.SphereGeometry(0.56,24,16,0,Math.PI*2,0,Math.PI*0.6), hairM);
-  hair.position.set(0,4.62,0); hair.scale.set(1.06,1.0,1.08); g.add(hair);
-  if(isW){ [-1,1].forEach(s=>{ const lock=new THREE.Mesh(new THREE.BoxGeometry(0.2,0.75,0.5), hairM);
-    lock.position.set(s*0.5,4.18,-0.04); g.add(lock); }); }
+  hair.position.set(0,3.87,-0.04); hair.scale.set(1.06,1.0,1.08); g.add(hair);
+  if(isW){ [-1,1].forEach(s=>{ const lock=new THREE.Mesh(new THREE.BoxGeometry(0.2,0.72,0.5), hairM);
+    lock.position.set(s*0.5,3.46,-0.08); g.add(lock); }); }
   return g;
+}
+/* a hand-drawn fan-style concert poster (no photos) for the bathroom wall */
+function makePosterTexture(){
+  const c=document.createElement('canvas'); c.width=512; c.height=720;
+  const x=c.getContext('2d');
+  const bg=x.createLinearGradient(0,0,0,720);
+  bg.addColorStop(0,'#2a1140'); bg.addColorStop(0.45,'#7a2a72'); bg.addColorStop(1,'#d36aa6');
+  x.fillStyle=bg; x.fillRect(0,0,512,720);
+  x.fillStyle='rgba(255,255,255,0.9)';
+  for(let i=0;i<70;i++){ x.beginPath(); x.arc(Math.random()*512,Math.random()*720,Math.random()*2.4,0,7); x.fill(); }
+  const sparkle=(cx,cy,r)=>{ x.save(); x.translate(cx,cy); x.fillStyle='rgba(255,255,255,0.95)';
+    x.beginPath(); x.moveTo(0,-r); x.lineTo(r*0.22,-r*0.22); x.lineTo(r,0); x.lineTo(r*0.22,r*0.22);
+    x.lineTo(0,r); x.lineTo(-r*0.22,r*0.22); x.lineTo(-r,0); x.lineTo(-r*0.22,-r*0.22); x.closePath(); x.fill(); x.restore(); };
+  sparkle(90,250,26); sparkle(430,330,30); sparkle(120,560,20); sparkle(400,600,18);
+  // simple singer-with-mic silhouette
+  x.fillStyle='rgba(12,6,16,0.9)';
+  x.beginPath(); x.arc(256,330,52,0,7); x.fill();
+  x.beginPath(); x.moveTo(256,378); x.lineTo(168,604); x.lineTo(344,604); x.closePath(); x.fill();
+  x.fillRect(250,250,12,90);
+  x.beginPath(); x.arc(256,244,16,0,7); x.fill();
+  // text
+  x.textAlign='center'; x.fillStyle='#fff';
+  x.font='bold 78px Georgia, serif'; x.fillText('TAYLOR',256,120); x.fillText('SWIFT',256,196);
+  x.font='italic 30px Georgia, serif'; x.fillStyle='#ffe1f1';
+  x.fillText('♪ THE ERAS TOUR ♪',256,668);
+  x.strokeStyle='#ffe1f1'; x.lineWidth=12; x.strokeRect(14,14,484,692);
+  const tex=new THREE.CanvasTexture(c); tex.anisotropy=4; return tex;
 }
 function decorToilet(group, path, stage){
   const isPee = stage.exitKind==="pee";
@@ -1345,13 +1380,14 @@ function decorToilet(group, path, stage){
   const flushBtn=new THREE.Mesh(new THREE.CylinderGeometry(0.45,0.45,0.35,20), porc);
   flushBtn.position.set(0,waterY+6.5,cz-4.0); group.add(flushBtn);
 
-  // ---- friendly minifigure hovering over the bowl; waste drops from beneath it ----
-  const figY=waterY+3.4;
+  // ---- friendly minifigure squatting high over the bowl; waste drops from beneath ----
+  const figY=waterY+4.6, figScale=1.2;
   const figure=makeMinifig(chosenHost);
-  figure.position.set(0, figY, cz); figure.scale.setScalar(1.25); group.add(figure);
+  figure.position.set(0, figY, cz); figure.scale.setScalar(figScale); group.add(figure);
   dynamicObjs.push({type:"hover", obj:figure, baseY:figY});
-  const figLight=new THREE.PointLight(0xfff2e2,0.55,26,2.0);
-  figLight.position.set(2,waterY+10,cz+7); group.add(figLight);
+  const figDropY=figY+1.0*figScale;   // just below the squatting bottom — where waste appears
+  const figLight=new THREE.PointLight(0xfff2e2,0.6,30,2.0);
+  figLight.position.set(2,waterY+12,cz+7); group.add(figLight);
 
   // ---- water surface (egg-shaped to fit the bowl) ----
   const waterCol=isPee?0xe7d76a:0xbcd2d6;   // urine sits visibly yellow
@@ -1376,6 +1412,12 @@ function decorToilet(group, path, stage){
   const tileMat=new THREE.MeshPhysicalMaterial({color:0xa6b6bc, roughness:0.6, clearcoat:0.25, side:THREE.DoubleSide});
   const backWall=new THREE.Mesh(new THREE.PlaneGeometry(60,46), tileMat);
   backWall.position.set(0,waterY+8,cz-11); group.add(backWall);
+  // ---- Taylor Swift concert poster on the wall (left of the tank) ----
+  const px=-8.5, py=waterY+10.5, pz=cz-10.9;
+  const frame=new THREE.Mesh(new THREE.PlaneGeometry(7.7,10.5), new THREE.MeshStandardMaterial({color:0x141414, roughness:0.5}));
+  frame.position.set(px,py,pz-0.02); group.add(frame);
+  const poster=new THREE.Mesh(new THREE.PlaneGeometry(7,9.8), new THREE.MeshBasicMaterial({map:makePosterTexture()}));
+  poster.position.set(px,py,pz); group.add(poster);
   const floor=new THREE.Mesh(new THREE.PlaneGeometry(60,46),
     new THREE.MeshPhysicalMaterial({color:0xb6c2c6, roughness:0.6, clearcoat:0.3, side:THREE.DoubleSide}));
   floor.rotation.x=-Math.PI/2; floor.position.set(0,waterY-8.4,cz); group.add(floor);
@@ -1422,7 +1464,7 @@ function decorToilet(group, path, stage){
   crown.position.set(0,waterY+0.6,cz); crown.visible=false; group.add(crown);
 
   splashState={ waterY, cz, water, waterGeo, baseWaterPos,
-                ripples, drops, dropGeo, dpos, dvel, DROPS, crown,
+                ripples, drops, dropGeo, dpos, dvel, DROPS, crown, figDropY,
                 triggered:false, time:0, kind:stage.exitKind };
 }
 
@@ -1875,6 +1917,11 @@ function makeFoodModel(food){
       [[0.16,0.1],[-0.14,-0.08]].forEach(([x,z])=>{ const ball=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.17,12,10),3,0.04), fm(0x6e3a24,{r:0.7}));
         ball.position.set(x,0.34,z); g.add(ball); });
       break; }
+    case "Kitten": {
+      // a whole little kitten — reuse the scene cat, shrunk to a bite-sized morsel
+      const kit=makeCat();
+      kit.scale.setScalar(0.34); kit.position.y=-0.7; g.add(kit);
+      break; }
     default: return makeBolus(food?food.color:0xc0392b);
   }
   return g;
@@ -1932,15 +1979,15 @@ function animate(){
       // pull back far enough to frame the whole toilet AND the cat beside it;
       // widen further on narrow/portrait phones so nothing gets cropped
       const portrait = H()>=W();
-      const fov = portrait?74:58;
+      const fov = portrait?76:50;
       if(camera.fov!==fov){ camera.fov=fov; camera.updateProjectionMatrix(); }
-      camera.position.set(2.6, wy+10, cz + (portrait?30:24));
+      camera.position.set(2.6, wy+8, cz + (portrait?34:32));
       camera.up.set(0,1,0);
-      camera.lookAt(1.4, wy-2.0, cz);
+      camera.lookAt(1.4, wy + (portrait?-1.0:-0.5), cz);
       camera.rotateY(yaw*0.4); camera.rotateX(pitch*0.4);
       if(foodAvatar){
         const fallT=Math.min(t/0.60,1);            // lands as splash triggers (t>0.60)
-        const y0=wy+3.2, y1=wy+0.5;                // emerges from beneath the figure
+        const y0=(s&&s.figDropY)||(wy+3.2), y1=wy+0.5;   // emerges from beneath the figure
         foodAvatar.visible=!(s&&s.triggered);
         foodAvatar.position.set(0, y0+(y1-y0)*fallT, cz);
         foodAvatar.rotation.x+=dt*2.2; foodAvatar.rotation.y+=dt*1.4; // tumble as it falls
