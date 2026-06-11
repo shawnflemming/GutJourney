@@ -183,7 +183,8 @@
     .factcard{ bottom:calc(118px + env(safe-area-inset-bottom)); left:12px; width:min(330px,calc(100% - 24px)); }
     .status{ top:12px; left:12px; }
     .two{ grid-template-columns:1fr; }
-    .controls{ bottom:calc(12px + env(safe-area-inset-bottom)); gap:3px; padding:5px 6px; }
+    .controls{ bottom:calc(12px + env(safe-area-inset-bottom)); gap:3px; padding:5px 6px;
+      flex-wrap:wrap; justify-content:center; border-radius:18px; }
     .cbtn{ padding:7px 8px; font-size:10px; letter-spacing:.04em; }
     .speed{ gap:5px; padding:0 4px; }
     .speed .spd-l{ display:none; }
@@ -250,6 +251,7 @@
       <button class="cbtn act" id="c-sound">♪ Sound</button>
       <button class="cbtn act" id="c-info">ⓘ Info</button>
       <button class="cbtn" id="c-skip">Skip ▸</button>
+      <button class="cbtn" id="c-end">💩 Skip to poop</button>
     </div>
   </div>
 
@@ -791,7 +793,7 @@ function stUrethra(){return{ id:"urethra", label:"STAGE 08", name:"The Urethra",
   fact:["THE LAST STRETCH",
     "The sphincter relaxes and the bladder squeezes — you rush out through the <b>urethra</b>. {HOSTFACT} You're about to leave the body entirely."]
 };}
-function stToilet(kind){return{ id:"toilet", label:"EXIT", name:kind==="pee"?"The Toilet (urine)":"The Toilet", decor:"toilet",
+function stToilet(kind){return{ id:"toilet", label:"EXIT", name:"The Toilet", decor:"toilet",
   sub:"Daylight. You've left the body.", ph:7.0, secs:1, fog:"#cfe4ea", wall:0xffffff, accent:0xbfe2ff,
   exitKind:kind, fact:["RETURNED TO THE WORLD",
     kind==="pee"
@@ -1132,28 +1134,59 @@ function decorRings(group, path, rad, color, count, thick, doAnimate){
 
 /* --- mouth: flat-topped teeth, papilla tongue, uvula, saliva --- */
 function decorMouth(group, path, rad, stage){
+  /* real dental anatomy: an UPPER arch hanging from the top gums and a
+     LOWER arch rising from the bottom — with bare cheek walls at the sides,
+     not spikes all the way around. Front teeth are flat incisors, the back
+     ones are wide cusped molars. */
   const toothMat=new THREE.MeshPhysicalMaterial({
-    color:0xf0e8d0, roughness:0.28, metalness:0.06,
-    clearcoat:0.88, clearcoatRoughness:0.10, emissive:0x18160a
+    color:0xf3ecd8, roughness:0.22, metalness:0.02,
+    clearcoat:0.9, clearcoatRoughness:0.08, emissive:0x18160a
   });
-  const incisorGeo=new THREE.CylinderGeometry(0.18,0.24,0.95,7);
-  const molarGeo  =new THREE.CylinderGeometry(0.26,0.30,0.80,5);
-  const m=new THREE.Matrix4(), q=new THREE.Quaternion(), s=new THREE.Vector3(1,1,1);
-  for(let i=0;i<9;i++){
-    const t=0.05+i*0.085;
-    const p=path.getPointAt(t), tan=path.getTangentAt(t);
-    const up=new THREE.Vector3(0,1,0);
-    const ringCount=i<3||i>6?10:8;
-    for(let k=0;k<ringCount;k++){
-      const ang=(k/ringCount)*Math.PI*2;
-      const radial=new THREE.Vector3(Math.cos(ang),Math.sin(ang),0);
-      const pos=p.clone().addScaledVector(radial, rad*0.80);
-      q.setFromRotationMatrix(new THREE.Matrix4().lookAt(pos,p,up));
-      q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),-Math.PI/2));
-      const mesh=new THREE.Mesh(i<3||i>6?incisorGeo:molarGeo, toothMat);
-      m.compose(pos,q,s); mesh.applyMatrix4(m); group.add(mesh);
-    }
+  const gumMat=new THREE.MeshPhysicalMaterial({
+    color:0xd4737a, roughness:0.7, clearcoat:0.4, clearcoatRoughness:0.3, emissive:0x2a0c0e
+  });
+  const incisorGeo=new THREE.BoxGeometry(0.34,0.58,0.14);          // flat blade
+  const canineGeo =new THREE.ConeGeometry(0.16,0.55,10);           // pointed
+  const molarGeo  =new THREE.BoxGeometry(0.42,0.46,0.40);          // wide grinder
+  const cuspGeo   =new THREE.SphereGeometry(0.09,8,6);
+  const gumGeo    =new THREE.SphereGeometry(0.22,10,8);
+  const up=new THREE.Vector3(0,1,0);
+  // 6 tooth rows along the front 55% of the mouth
+  for(let i=0;i<6;i++){
+    const t=0.06+i*0.09;
+    const p=path.getPointAt(t);
+    // upper arch (≈ 55°–125°) and lower arch (≈ 235°–305°), 4 teeth each
+    [[55,125,1],[235,305,-1]].forEach(([a0,a1,dir])=>{
+      for(let k=0;k<4;k++){
+        const ang=THREE.MathUtils.degToRad(a0+(a1-a0)*(k+0.5)/4);
+        const radial=new THREE.Vector3(Math.cos(ang),Math.sin(ang),0);
+        const base=p.clone().addScaledVector(radial, rad*0.88);
+        // gum bump the tooth grows out of
+        const gum=new THREE.Mesh(gumGeo,gumMat);
+        gum.position.copy(base); gum.scale.set(1.3,0.8,1.3); group.add(gum);
+        // tooth crown pointing into the mouth cavity
+        const kind=i<2?incisorGeo:(i<3?canineGeo:molarGeo);
+        const tooth=new THREE.Mesh(kind,toothMat);
+        tooth.position.copy(base).addScaledVector(radial,-0.34);
+        tooth.lookAt(p);                            // face the cavity centre
+        tooth.rotateX(dir>0?-Math.PI/2:Math.PI/2);  // crown hangs down / stands up
+        group.add(tooth);
+        if(kind===molarGeo){                        // little cusp bumps on molars
+          [[-0.12,-0.1],[0.12,-0.1],[-0.12,0.1],[0.12,0.1]].forEach(([cx,cz])=>{
+            const cusp=new THREE.Mesh(cuspGeo,toothMat);
+            cusp.position.copy(tooth.position).addScaledVector(radial,-0.24);
+            cusp.position.x+=cx; cusp.position.z+=cz; group.add(cusp);
+          });
+        }
+      }
+    });
   }
+  // palate — the smooth ridged roof of the mouth
+  const palate=new THREE.Mesh(new THREE.SphereGeometry(rad*1.5,28,16),
+    new THREE.MeshPhysicalMaterial({color:0xd98a8a, roughness:0.6, clearcoat:0.4, emissive:0x2a0e0e}));
+  palate.scale.set(1.22,0.4,2.2);
+  palate.position.copy(path.getPointAt(0.4)).add(new THREE.Vector3(0, rad*1.12, 0));
+  group.add(palate);
   // tongue: fleshy ellipsoid with papillae
   const tongueMat=new THREE.MeshPhysicalMaterial({
     color:0xc85a60, roughness:0.80, metalness:0.0,
@@ -2069,6 +2102,7 @@ function startStage(i){
   curveRad=built.rad||2;
   setAvatar(stage);
   updateHUD(stage);
+  document.getElementById('c-end').style.display = stage.decor==="toilet" ? "none" : "";
   if(window.Audio3D) Audio3D.setStage(stage.id);
   // surprise-event + diarrhea banners
   if(journeyEvent && stage.id===journeyEvent.stage){
@@ -2324,9 +2358,9 @@ function avatarSpec(stage){
       ? (stage.exitKind==="pee"?0xe6dd6a:0xcfd0c0) : fc;
     return {kind:"drop", color:col};
   }
-  // solids: recognisable food early → chewed bolus mid-tract → poop at the end
+  // solids: recognisable food in the mouth → swallowed as a chewed bolus → poop at the end
   if(/^(large|rectum|toilet)$/.test(stage.id)) return {kind:"poop", color:0x5e3a1c};
-  if(/^(mouth|esophagus)$/.test(stage.id))     return {kind:"food", color:fc};
+  if(stage.id==="mouth")                       return {kind:"food", color:fc};
   return {kind:"bolus", color:fc};
 }
 function setAvatar(stage){
@@ -2431,7 +2465,15 @@ function animate(){
         // tumble so its 3D form reads
         foodAvatar.rotation.y+=dt*0.8; foodAvatar.rotation.x+=dt*0.35;
         // ~1/3 of the tube radius — clearly an object inside the tube
-        foodAvatar.scale.setScalar(Math.max(0.5, Math.min(curveRad*0.34, 1.4)));
+        const base=Math.max(0.5, Math.min(curveRad*0.34, 1.4));
+        if(stage.id==="mouth"){
+          // CHOMP: rhythmic vertical squash + the food shrinks as it's chewed up
+          const chomp=Math.max(0,Math.sin(time*5.2));
+          const shrink=1-Math.min(t*0.55,0.45);
+          foodAvatar.scale.set(base*shrink*(1+chomp*0.14), base*shrink*(1-chomp*0.34), base*shrink*(1+chomp*0.14));
+        } else {
+          foodAvatar.scale.setScalar(base);
+        }
       }
 
       // 5-light rig — keep the food lit from the camera side
@@ -2590,6 +2632,7 @@ function begin(){
   document.getElementById('c-play').textContent="❚❚ Pause";
   document.getElementById('c-play').classList.add('act');
   document.getElementById('hint').style.opacity='1';
+  document.getElementById('c-end').textContent=isLiquid?"💧 Skip to pee":"💩 Skip to poop";
   document.getElementById('c-done').classList.remove('on');
   document.getElementById('start').style.display='none';
   document.getElementById('end').style.display='none';
@@ -2644,6 +2687,11 @@ function wireControls(){
     this.classList.toggle('act',playing);
   };
   document.getElementById('c-skip').onclick=()=>{ if(!transitioning) nextStage(); };
+  document.getElementById('c-end').onclick=()=>{
+    if(transitioning||stageIndex>=stages.length-1) return;
+    transitioning=true;
+    irisClose(stages[stageIndex].wall, ()=>{ startStage(stages.length-1); transitioning=false; });
+  };
   document.getElementById('c-done').onclick=()=>finish();
   const setInfoHidden=(hidden)=>{
     document.getElementById('hud').classList.toggle('noinfo',hidden);
