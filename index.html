@@ -1322,8 +1322,8 @@ function makeMinifig(host){
     thigh.position.set(x,1.02,0.42); thigh.rotation.x=0.8; g.add(thigh);    // steep — knees up high
     const shin=new THREE.Mesh(new THREE.BoxGeometry(0.5,1.28,0.5), pants);
     shin.position.set(x,0.64,1.18); shin.rotation.x=0.1; g.add(shin);       // near-vertical down to foot
-    const knee=new THREE.Mesh(new THREE.SphereGeometry(0.29,14,12), pants);
-    knee.position.set(x,1.52,1.12); g.add(knee);                            // knee cap at the bend
+    const knee=new THREE.Mesh(new THREE.SphereGeometry(0.2,14,12), pants);
+    knee.position.set(x,1.5,1.1); g.add(knee);                              // small knee cap at the bend
     const foot=new THREE.Mesh(new THREE.BoxGeometry(0.56,0.28,0.86), shoe);
     foot.position.set(x,0.14,1.42); g.add(foot);
   });
@@ -1475,7 +1475,7 @@ function decorToilet(group, path, stage){
 
   // ---- a pedestal sink in the back-right corner ----
   const sink=makeSink();
-  sink.position.set(8.5, waterY-8.4, cz-5); sink.rotation.y=-0.5; group.add(sink);
+  sink.position.set(11.5, waterY-8.4, cz-4); sink.rotation.y=-0.6; group.add(sink);
 
   // ---- water surface (egg-shaped to fit the bowl) ----
   const waterCol=isPee?0xe7d76a:0xbcd2d6;   // urine sits visibly yellow
