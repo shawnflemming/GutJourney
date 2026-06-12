@@ -1054,10 +1054,45 @@ let curCap=null, curPortal=null;   // current tube's end membrane + glow
 
 const W=()=>window.innerWidth, H=()=>window.innerHeight;
 
+/* ---- device quality preset: phones/tablets get lighter everything ---- */
+const PERF=(function(){
+  const coarse=window.matchMedia&&matchMedia('(pointer:coarse)').matches;
+  const mobile=coarse||/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  return {
+    mobile,
+    dprCap:  mobile?1.5:2,      // fill-rate is the #1 mobile bottleneck
+    aa:      !mobile,           // skip MSAA on mobile (high DPR covers it)
+    segScale:mobile?0.6:1,      // tube path/length segments
+    radial:  mobile?36:52,      // tube cross-section vertices
+    glowShell:!mobile,          // the near-invisible additive shell
+    decorScale:mobile?0.5:1,    // instanced decor counts (villi, bubbles…)
+    liteLights:mobile           // drop two of the five point lights
+  };
+})();
+/* adaptive resolution: if frames run long, step the pixel ratio down (and
+   back up when there's headroom) — smooth ride on weak GPUs, crisp on fast */
+let dprCur=Math.min(window.devicePixelRatio||1, PERF.dprCap);
+let perfAcc=0, perfN=0, perfCool=0;
+function adaptPerf(dt){
+  if(document.hidden) { perfAcc=0; perfN=0; return; }   // rAF throttling isn't GPU load
+  perfAcc+=dt; perfN++;
+  if(perfN<60) return;
+  const avg=perfAcc/perfN; perfAcc=0; perfN=0;
+  if(perfCool>0){ perfCool--; return; }
+  const cap=Math.min(window.devicePixelRatio||1, PERF.dprCap);
+  if(avg>0.034 && dprCur>1.0){
+    dprCur=Math.max(1.0, dprCur-0.25);
+    renderer.setPixelRatio(dprCur); renderer.setSize(W(),H()); perfCool=2;
+  } else if(avg<0.020 && dprCur<cap){
+    dprCur=Math.min(cap, dprCur+0.25);
+    renderer.setPixelRatio(dprCur); renderer.setSize(W(),H()); perfCool=4;
+  }
+}
+
 function initEngine(){
   const host=document.getElementById('scene');
-  renderer=new THREE.WebGLRenderer({antialias:true, powerPreference:"high-performance"});
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  renderer=new THREE.WebGLRenderer({antialias:PERF.aa, powerPreference:"high-performance"});
+  renderer.setPixelRatio(dprCur);
   renderer.setSize(W(),H());
   renderer.toneMapping=THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure=0.54;
@@ -1076,9 +1111,11 @@ function initEngine(){
   const hemi=new THREE.HemisphereLight(0xffcaaa, 0x120405, 0.16); scene.add(hemi);
   headlight =new THREE.PointLight(0xfff4e0, 0.95, 9, 2.2); scene.add(headlight);
   headFront  =new THREE.PointLight(0xffe8d0, 0.42, 16, 2.0); scene.add(headFront);
-  headBack   =new THREE.PointLight(0xffd0b0, 0.22, 12, 2.0); scene.add(headBack);
-  fillLight  =new THREE.PointLight(0xff6040, 0.22, 30, 1.7); scene.add(fillLight);
+  headBack   =new THREE.PointLight(0xffd0b0, 0.22, 12, 2.0);
+  fillLight  =new THREE.PointLight(0xff6040, 0.22, 30, 1.7);
   rimLight   =new THREE.PointLight(0xff3820, 0.18, 22, 2.0); scene.add(rimLight);
+  // mobile: skip the two subtlest lights — every light multiplies fragment cost
+  if(!PERF.liteLights){ scene.add(headBack); scene.add(fillLight); }
 
   window.addEventListener('resize',()=>{
     camera.aspect=W()/H(); camera.updateProjectionMatrix(); renderer.setSize(W(),H());
@@ -1200,7 +1237,7 @@ function makePath(segments, length, wiggle, twist){
 /* ============================================================
    STAGE BUILDERS
    ============================================================ */
-function buildStage(stage){
+function buildStageGeo(stage){
   const group=new THREE.Group();
   const d=stage.decor;
 
@@ -1234,10 +1271,11 @@ function buildStage(stage){
 
   if(d!=="toilet"){
     /* main wall tube — high segment + radial count for crisp displacement */
-    const geo=new THREE.TubeGeometry(path, segs, rad, 52, false);
+    const tubeSegs=Math.max(90,Math.round(segs*PERF.segScale)), radSegs=PERF.radial;
+    const geo=new THREE.TubeGeometry(path, tubeSegs, rad, radSegs, false);
     displaceTube(geo, amp, freq);
     // drift toward a deeper/different tone down the length for regional variety
-    mottleWall(geo, stage.wall, 52, segs, {albedo:0.58, drift:stage.wallEnd??null});
+    mottleWall(geo, stage.wall, radSegs, tubeSegs, {albedo:0.58, drift:stage.wallEnd??null});
     const mat=fleshMat(stage.wall, {rough:0.62, emi:0.06});
     mat.vertexColors=true; mat.color.set(0xffffff); // vertex colours carry the flesh tone
     if(d==="tube_pale"||d==="bladder"){ mat.roughness=0.48; }
@@ -1246,7 +1284,7 @@ function buildStage(stage){
 
     /* wet mucus shell — glossy semi-transparent inner skin */
     group.add(new THREE.Mesh(
-      new THREE.TubeGeometry(path, Math.floor(segs*0.55), rad*0.991, 36, false),
+      new THREE.TubeGeometry(path, Math.floor(tubeSegs*0.55), rad*0.991, PERF.mobile?24:36, false),
       new THREE.MeshPhysicalMaterial({
         color:stage.wall, side:THREE.BackSide,
         roughness:0.12, metalness:0.0,
@@ -1256,9 +1294,10 @@ function buildStage(stage){
       })
     ));
 
-    /* additive bioluminescent glow shell */
-    group.add(new THREE.Mesh(
-      new THREE.TubeGeometry(path, Math.floor(segs/3), rad*0.968, 18, false),
+    /* additive bioluminescent glow shell — barely visible, pure overdraw on
+       mobile GPUs, so phones/tablets skip it */
+    if(PERF.glowShell) group.add(new THREE.Mesh(
+      new THREE.TubeGeometry(path, Math.floor(tubeSegs/3), rad*0.968, 18, false),
       new THREE.MeshBasicMaterial({
         color:stage.accent||stage.wall, side:THREE.BackSide,
         transparent:true, opacity:0.018,
@@ -1310,6 +1349,13 @@ function buildStage(stage){
     group.add(endLight);
   }
 
+  return {group, curve:path, rad, cap:capRef, portal:portalRef};
+}
+
+/* decor pass — split from the geometry pass so a pre-built next organ can be
+   spread over two frames instead of one long hitch */
+function buildStageDecor(stage, built){
+  const {group, curve:path, rad}=built, d=stage.decor;
   if(d==="mouth")            decorMouth(group, path, rad, stage);
   else if(d==="tube_rib")    decorRings(group, path, rad, stage.accent, 30, 0.20, true);
   else if(d==="chamber_acid")decorStomach(group, path, rad, stage);
@@ -1321,11 +1367,16 @@ function buildStage(stage){
   else if(d==="bladder")     decorBladder(group, path, rad, stage);
   else if(d==="tube_pale")   decorRings(group, path, rad, stage.accent, 24, 0.11, false);
   else if(d==="toilet")      decorToilet(group, path, stage);
-
   // tag this stage's animated objects so they can be culled when it's disposed
   dynamicObjs.forEach(e=>{ if(!e._g) e._g=group; });
-  scene.add(group);
-  return {group, curve:path, rad, cap:capRef, portal:portalRef};
+}
+
+/* one-shot build (journey start, toilet) — geometry + decor + into the scene */
+function buildStage(stage){
+  const built=buildStageGeo(stage);
+  buildStageDecor(stage, built);
+  scene.add(built.group);
+  return built;
 }
 
 /* visible sphincter ring cluster near tube end */
@@ -1514,9 +1565,10 @@ function decorMouth(group, path, rad, stage){
   groove.position.set(tCx.x, floorY+rad*0.46, tCx.z); group.add(groove);
   // fine papillae bumps over the tongue surface
   const papMat=new THREE.MeshPhysicalMaterial({color:0xc9555f, roughness:0.7, emissive:0x2a0809});
-  const pap=new THREE.InstancedMesh(new THREE.SphereGeometry(0.05,5,4), papMat, 240);
+  const PAPS=Math.round(240*PERF.decorScale);
+  const pap=new THREE.InstancedMesh(new THREE.SphereGeometry(0.05,5,4), papMat, PAPS);
   const pm=new THREE.Matrix4(), pq=new THREE.Quaternion(), ps=new THREE.Vector3();
-  for(let i=0;i<240;i++){
+  for(let i=0;i<PAPS;i++){
     const lx=(Math.random()-0.5)*rad*1.25, lz=(Math.random()-0.5)*rad*3.0;
     const y=floorY+rad*0.46 - (lx*lx)*0.03;          // follow the dome
     const s2=0.5+Math.random()*0.9; ps.set(s2,s2,s2);
@@ -1564,9 +1616,10 @@ function decorStomach(group, path, rad, stage){
   const pitMat=new THREE.MeshPhysicalMaterial({
     color:0x943030, roughness:0.90, clearcoat:0.60, clearcoatRoughness:0.20, emissive:0x280808
   });
-  const pitInst=new THREE.InstancedMesh(new THREE.SphereGeometry(0.16,6,5), pitMat, 600);
+  const PITS=Math.round(600*PERF.decorScale);
+  const pitInst=new THREE.InstancedMesh(new THREE.SphereGeometry(0.16,6,5), pitMat, PITS);
   const pm=new THREE.Matrix4(), pq=new THREE.Quaternion();
-  for(let i=0;i<600;i++){
+  for(let i=0;i<PITS;i++){
     const t=Math.random(); const p=path.getPointAt(t);
     const tan=path.getTangentAt(t);
     const ref=Math.abs(tan.y)<0.9?new THREE.Vector3(0,1,0):new THREE.Vector3(1,0,0);
@@ -1597,7 +1650,7 @@ function decorVilli(group, path, rad, stage){
     color:0xe09878, roughness:0.56, metalness:0.0,
     clearcoat:0.72, clearcoatRoughness:0.16, emissive:0x280c08,
   });
-  const COUNT=3400, SEGS=130;
+  const COUNT=Math.round(3400*PERF.decorScale), SEGS=Math.round(130*Math.max(PERF.segScale,0.6));
   const villi=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.06,0.115,1.15,7), villusMat, COUNT);
   const caps =new THREE.InstancedMesh(new THREE.SphereGeometry(0.082,7,5), capMat, COUNT);
   const mm=new THREE.Matrix4(), qq=new THREE.Quaternion(), ss=new THREE.Vector3();
@@ -1679,7 +1732,7 @@ function decorBlood(group, path, rad, stage){
     color:0xd02828, roughness:0.42, metalness:0.0,
     clearcoat:0.55, clearcoatRoughness:0.22, emissive:0x4a0808
   });
-  const COUNT=320;
+  const COUNT=Math.round(320*PERF.decorScale);
   const rbc=new THREE.InstancedMesh(new THREE.TorusGeometry(0.32,0.14,10,18), rbcMat, COUNT);
   const data=[];
   const mm=new THREE.Matrix4(), qq=new THREE.Quaternion();
@@ -1741,15 +1794,16 @@ function decorKidney(group, path, rad, stage){
     color:0xb05050, roughness:0.68, metalness:0.0,
     clearcoat:0.45, clearcoatRoughness:0.28, emissive:0x3a1010
   });
-  const knots=new THREE.InstancedMesh(new THREE.SphereGeometry(0.18,8,8), knotMat, 700);
+  const KN=Math.round(700*PERF.decorScale);
+  const knots=new THREE.InstancedMesh(new THREE.SphereGeometry(0.18,8,8), knotMat, KN);
   const mm=new THREE.Matrix4(), qq=new THREE.Quaternion(), ss=new THREE.Vector3(1,1,1);
   let idx=0;
-  for(let i=0;i<48&&idx<700;i++){
+  for(let i=0;i<48&&idx<KN;i++){
     const t=(i+0.5)/48; const p=path.getPointAt(t);
     const cx=p.clone().add(new THREE.Vector3(
       (Math.random()-0.5),(Math.random()-0.5),(Math.random()-0.5)
     ).multiplyScalar(rad*0.88));
-    for(let k=0;k<14&&idx<700;k++){
+    for(let k=0;k<14&&idx<KN;k++){
       const pos=cx.clone().add(new THREE.Vector3(
         (Math.random()-0.5),(Math.random()-0.5),(Math.random()-0.5)
       ).multiplyScalar(0.55));
@@ -2298,6 +2352,7 @@ function screenRipple(kind){
 
 /* --- particle helpers --- */
 function saliva(group, path, rad, color, n, size){
+  n=Math.max(20,Math.round(n*PERF.decorScale));
   const g=new THREE.BufferGeometry();
   const arr=new Float32Array(n*3); const meta=[];
   for(let i=0;i<n;i++){
@@ -2313,6 +2368,7 @@ function saliva(group, path, rad, color, n, size){
   dynamicObjs.push({type:"motes", obj:null, meta, arr, geo:g});
 }
 function acidBubbles(group, path, rad, color, n){
+  n=Math.max(16,Math.round(n*PERF.decorScale));
   const mat=new THREE.MeshPhysicalMaterial({
     color, transparent:true, opacity:0.55,
     emissive:new THREE.Color(color).multiplyScalar(0.55),
@@ -2498,6 +2554,7 @@ function applyStageEnv(stage, instantFog){
 }
 
 function clearNextPrep(){
+  clearPrepJob();
   if(!nextPrep) return;
   scene.remove(nextPrep.group);
   dynamicObjs=dynamicObjs.filter(e=>e._g!==nextPrep.group);
@@ -2518,26 +2575,47 @@ function startStage(i){
   irisOpen(stage.wall);
 }
 
-/* --- seamless flow: weld the next organ onto this tube's end --- */
-function prepareNextStage(){
-  const next=stages[stageIndex+1];
-  const endP=curve.getPointAt(1), endT=curve.getTangentAt(1);
-  const built=buildStage(next);
-  // align: rotate the new tube (about Y) so its heading continues ours, then
-  // translate its entrance onto our exit
-  const sP=built.curve.getPointAt(0), sT=built.curve.getTangentAt(0);
-  const yawAng=Math.atan2(endT.x,endT.z)-Math.atan2(sT.x,sT.z);
-  const M=new THREE.Matrix4().makeTranslation(endP.x,endP.y,endP.z)
-    .multiply(new THREE.Matrix4().makeRotationY(yawAng))
-    .multiply(new THREE.Matrix4().makeTranslation(-sP.x,-sP.y,-sP.z));
-  built.group.applyMatrix4(M);
-  const pts=built.curve.points.map(p=>p.clone().applyMatrix4(M));
-  const c2=new THREE.CatmullRomCurve3(pts);
-  nextPrep={stage:next, group:built.group, curve:c2, len:c2.getLength(),
-            rad:built.rad, cap:built.cap, portal:built.portal};
-  // open the membrane: you can now see straight through into the next organ
-  if(curCap) curCap.visible=false;
-  if(curPortal) curPortal.visible=false;
+/* --- seamless flow: weld the next organ onto this tube's end.
+   The build is spread over three frames (geometry → decor → weld) so phones
+   never feel a single long hitch at the sphincter. --- */
+let prepJob=null;
+function stepPrepJob(){
+  if(!prepJob) return;
+  if(prepJob.phase===1){
+    prepJob.built=buildStageGeo(prepJob.stage);   // heavy: tube + displacement
+    prepJob.phase=2;
+  } else if(prepJob.phase===2){
+    buildStageDecor(prepJob.stage, prepJob.built); // heavy: villi/pits/veins…
+    prepJob.phase=3;
+  } else {
+    const built=prepJob.built, next=prepJob.stage;
+    // align: rotate the new tube (about Y) so its heading continues ours, then
+    // translate its entrance onto our exit
+    const endP=curve.getPointAt(1), endT=curve.getTangentAt(1);
+    const sP=built.curve.getPointAt(0), sT=built.curve.getTangentAt(0);
+    const yawAng=Math.atan2(endT.x,endT.z)-Math.atan2(sT.x,sT.z);
+    const M=new THREE.Matrix4().makeTranslation(endP.x,endP.y,endP.z)
+      .multiply(new THREE.Matrix4().makeRotationY(yawAng))
+      .multiply(new THREE.Matrix4().makeTranslation(-sP.x,-sP.y,-sP.z));
+    built.group.applyMatrix4(M);
+    const pts=built.curve.points.map(p=>p.clone().applyMatrix4(M));
+    const c2=new THREE.CatmullRomCurve3(pts);
+    scene.add(built.group);
+    nextPrep={stage:next, group:built.group, curve:c2, len:c2.getLength(),
+              rad:built.rad, cap:built.cap, portal:built.portal};
+    // open the membrane: you can now see straight through into the next organ
+    if(curCap) curCap.visible=false;
+    if(curPortal) curPortal.visible=false;
+    prepJob=null;
+  }
+}
+function clearPrepJob(){
+  if(!prepJob) return;
+  if(prepJob.built){
+    dynamicObjs=dynamicObjs.filter(e=>e._g!==prepJob.built.group);
+    disposeGroup(prepJob.built.group);
+  }
+  prepJob=null;
 }
 
 function seamHandoff(){
@@ -2550,10 +2628,11 @@ function seamHandoff(){
   travelT=leftover*oldLen/curveLen;
   splashState=null; nextPrep=null;
   applyStageEnv(stage, false);          // fog crossfades instead of snapping
-  // the organ behind us is out of sight — let it go
+  // the organ behind us is out of sight — drop it from the scene now, but do
+  // the GPU/GC cleanup a beat later so it never shares a frame with the seam
   scene.remove(old);
   dynamicObjs=dynamicObjs.filter(e=>e._g!==old);
-  disposeGroup(old);
+  setTimeout(()=>disposeGroup(old), 300);
 }
 
 let toastTimer=null;
@@ -2945,6 +3024,7 @@ function animate(){
   requestAnimationFrame(animate);
   const dt=Math.min(clock.getDelta(),0.05);
   const time=clock.elapsedTime;
+  adaptPerf(dt);
 
   if(stageGroup&&curve){
     let stage=stages[stageIndex];
@@ -2965,10 +3045,12 @@ function animate(){
       travelT+=(dt/baseDur)*speedMul*nearEnd*stageSpeed;
       elapsedSeconds+=(dt/baseDur)*speedMul*nearEnd*stageSpeed*stage.secs;
       // seamless: weld the next organ on as we approach the sphincter
-      if(stage.decor!=="toilet" && !nextPrep && travelT>0.80
+      // (started early, one build phase per frame — no single-frame hitch)
+      if(stage.decor!=="toilet" && !nextPrep && !prepJob && travelT>0.62
          && stageIndex+1<stages.length && stages[stageIndex+1].decor!=="toilet"){
-        prepareNextStage();
+        prepJob={phase:1, stage:stages[stageIndex+1]};
       }
+      stepPrepJob();
       if(travelT>=1){
         if(stage.decor==="toilet"){ travelT=1; playing=false; document.getElementById('c-done').classList.add('on'); }
         else if(nextPrep){ seamHandoff(); stage=stages[stageIndex]; }
