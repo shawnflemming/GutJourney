@@ -226,7 +226,7 @@
     </div>
   </div>
 
-  <div id="hud">
+  <div id="hud" class="noinfo">
     <div class="status">
       <div class="organ-tag mono" id="organ-tag">STAGE 01</div>
       <div class="organ-name disp" id="organ-name">Mouth</div>
@@ -244,12 +244,12 @@
     </div>
     <div class="hint" id="hint">Drag to look around · sound on · you travel automatically</div>
     <div class="toast" id="toast"><div class="tt" id="toast-t"></div><div class="tx" id="toast-x"></div></div>
-    <button class="done-btn" id="c-done">Done ✓</button>
+    <button class="done-btn" id="c-done">Done! <span class="arrow">→</span></button>
     <div class="controls">
       <button class="cbtn act" id="c-play">❚❚ Pause</button>
       <div class="speed"><span class="spd-l">SPEED</span> <input type="range" id="c-speed" min="0.3" max="2.4" step="0.1" value="1"></div>
       <button class="cbtn act" id="c-sound">♪ Sound</button>
-      <button class="cbtn act" id="c-info">ⓘ Info</button>
+      <button class="cbtn" id="c-info">ⓘ Show info</button>
       <button class="cbtn" id="c-skip">Skip ▸</button>
       <button class="cbtn" id="c-end">💩 Skip to poop</button>
     </div>
@@ -284,21 +284,55 @@ const Audio3D = (function(){
   let foodSnd={crunch:0.4, grease:0.3};
   let meowBuf=null, meowTried=false;
   let fartBufs=[], fartsTried=false;
+  let decodeCtx=null;   // lightweight context so clips can decode BEFORE play begins
+  let mediaEls=[];      // HTMLAudio fallback elements (file:// mode) — tracked so we can stop them
+  function stopMedia(){ mediaEls.forEach(el=>{ try{ el.pause(); el.src=""; }catch(e){} }); mediaEls=[]; }
+  /* a context purely for decoding — created at page load so the real recordings
+     are ready even if the user skips straight to the toilet */
+  function decoder(){
+    if(ctx) return ctx;
+    if(!decodeCtx){ const AC=window.AudioContext||window.webkitAudioContext; if(AC){ try{ decodeCtx=new AC(); }catch(e){} } }
+    return decodeCtx;
+  }
   /* real recordings (Wikimedia Commons) — decoded once, reused */
   function loadClip(url, ok, fail){
+    const dc=decoder(); if(!dc){ if(fail) fail(); return; }
     fetch(url).then(r=>{ if(!r.ok) throw 0; return r.arrayBuffer(); }).then(ab=>{
-      ctx.decodeAudioData(ab, ok, ()=>{ if(fail) fail(); });
+      dc.decodeAudioData(ab, ok, ()=>{ if(fail) fail(); });
     }).catch(()=>{ if(fail) fail(); });
   }
   function loadMeow(){
-    if(meowBuf||meowTried||!ctx) return;
+    if(meowBuf||meowTried||!decoder()) return;
     meowTried=true;
     loadClip('meow.mp3', b=>{ meowBuf=b; }, ()=>{ meowTried=false; });
   }
   function loadFarts(){
-    if(fartsTried||!ctx) return;
+    if(fartsTried||!decoder()) return;
     fartsTried=true;
     ['fart1.wav','fart2.wav','fart3.wav'].forEach(u=>loadClip(u, b=>fartBufs.push(b)));
+  }
+  // kick off decoding immediately at page load, long before any sound plays
+  function preload(){ loadMeow(); loadFarts(); }
+  /* file://-safe playback: when the page is opened as a local file, fetch() of
+     the clips is blocked by the browser, so decodeAudioData never gets them.
+     HTMLAudio elements CAN load same-origin local files, so use one as a
+     fallback and route it through the graph so mute/volume still apply. */
+  function playUrl(url, vol){
+    if(!ctx) return false;
+    try{
+      const el=new Audio(); el.src=url;
+      mediaEls.push(el);                       // track so close()/suspend() can stop it
+      el.addEventListener('ended',()=>{ const i=mediaEls.indexOf(el); if(i>=0) mediaEls.splice(i,1); });
+      let routed=false;
+      try{
+        const node=ctx.createMediaElementSource(el);
+        const g=ctx.createGain(); g.gain.value=(vol!=null?vol:1);
+        node.connect(g); g.connect(master); routed=true;
+      }catch(e){ /* tainted/local — play through the element's own output */ }
+      if(!routed) el.volume=muted?0:(vol!=null?Math.min(vol,1):1);
+      const p=el.play(); if(p&&p.catch) p.catch(()=>{});
+      return true;
+    }catch(e){ return false; }
   }
   function setFood(p){ foodSnd={crunch:(p&&p.crunch!=null)?p.crunch:0.4, grease:(p&&p.grease!=null)?p.grease:0.3}; }
 
@@ -317,7 +351,10 @@ const Audio3D = (function(){
     if(started){ resume(); return; }   // re-begin: wake a suspended context (mobile!)
     const AC=window.AudioContext||window.webkitAudioContext;
     if(!AC) return;
-    ctx=new AC();
+    // adopt the decode context we already created at page load, so the clips
+    // we decoded into it play back through the very same context (no cross-ctx)
+    ctx=decodeCtx||new AC(); decodeCtx=ctx;
+    try{ ctx.resume(); }catch(e){}
     master=ctx.createGain(); master.gain.value=0.0; master.connect(ctx.destination);
     noiseSrc=ctx.createBufferSource(); noiseSrc.buffer=makeNoiseBuffer(); noiseSrc.loop=true;
     bedFilter=ctx.createBiquadFilter(); bedFilter.type="bandpass";
@@ -475,24 +512,52 @@ const Audio3D = (function(){
     }
   }
 
-  /* pee: high-frequency stream hitting water */
+  /* pee: a stream of urine trickling/tinkling INTO toilet water — a hissy
+     highpass stream on top, a gurgly low water-pool layer underneath, and a
+     steady patter of droplet "plips" breaking the surface for ~2.5s */
   function pee(){
     if(!ctx||muted) return;
-    const t=now();
-    const src=ctx.createBufferSource(); src.buffer=makeNoiseBuffer(); src.loop=false;
-    const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=1600;
-    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=3200; bp.Q.value=0.55;
+    const t=now(), DUR=2.6;
+    // 1) the hissing stream itself (air + liquid in flight)
+    const src=ctx.createBufferSource(); src.buffer=makeNoiseBuffer(); src.loop=true;
+    const hp=ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=1500;
+    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=3000; bp.Q.value=0.5;
     const g=ctx.createGain();
     g.gain.setValueAtTime(0.0001,t);
-    g.gain.linearRampToValueAtTime(0.44,t+0.2);
-    g.gain.setValueAtTime(0.44,t+1.7);
-    g.gain.exponentialRampToValueAtTime(0.0001,t+2.5);
+    g.gain.linearRampToValueAtTime(0.4,t+0.18);
+    g.gain.setValueAtTime(0.4,t+DUR-0.6);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+DUR);
+    // slowly wandering pitch so the stream sounds alive, not static
+    const wob=ctx.createOscillator(); wob.type='sine'; wob.frequency.value=3.2;
+    const wobG=ctx.createGain(); wobG.gain.value=600; wob.connect(wobG); wobG.connect(bp.frequency);
     src.connect(hp); hp.connect(bp); bp.connect(g); g.connect(master);
-    src.start(t); src.stop(t+2.8);
-    setTimeout(()=>bubble(220,0.45,0.20),90);
-    setTimeout(()=>bubble(180,0.55,0.15),340);
-    setTimeout(()=>bubble(150,0.50,0.12),620);
-    setTimeout(()=>splash(),80);
+    src.start(t); src.stop(t+DUR+0.1); wob.start(t); wob.stop(t+DUR+0.1);
+    // 2) the bubbling pool the stream is drilling into (warm, low, watery)
+    const pool=ctx.createBufferSource(); pool.buffer=makeNoiseBuffer(); pool.loop=true;
+    const plp=ctx.createBiquadFilter(); plp.type='lowpass'; plp.frequency.value=520; plp.Q.value=2;
+    const pg=ctx.createGain();
+    pg.gain.setValueAtTime(0.0001,t);
+    pg.gain.linearRampToValueAtTime(0.22,t+0.25);
+    pg.gain.setValueAtTime(0.22,t+DUR-0.5);
+    pg.gain.exponentialRampToValueAtTime(0.0001,t+DUR);
+    pool.connect(plp); plp.connect(pg); pg.connect(master);
+    pool.start(t); pool.stop(t+DUR+0.1);
+    // 3) a steady patter of droplets plinking on the water surface
+    for(let i=0;i<18;i++){
+      const dt0=0.12+i*0.13*(0.7+Math.random()*0.6), dur=0.04+Math.random()*0.05;
+      if(dt0>DUR-0.2) break;
+      const o=ctx.createOscillator(); o.type='sine';
+      const f0=300+Math.random()*420;
+      o.frequency.setValueAtTime(f0,t+dt0);
+      o.frequency.exponentialRampToValueAtTime(f0*2.2,t+dt0+dur);
+      const dg=ctx.createGain(); dg.gain.setValueAtTime(0.0001,t+dt0);
+      dg.gain.linearRampToValueAtTime(0.12,t+dt0+0.008);
+      dg.gain.exponentialRampToValueAtTime(0.0001,t+dt0+dur);
+      o.connect(dg); dg.connect(master); o.start(t+dt0); o.stop(t+dt0+dur+0.02);
+    }
+    setTimeout(()=>bubble(210,0.5,0.16),120);
+    setTimeout(()=>bubble(160,0.55,0.13),520);
+    setTimeout(()=>splash(),60);
   }
 
   /* plop: sub-bass impact + cavity pop + water spray */
@@ -543,6 +608,10 @@ const Audio3D = (function(){
       }
       return;
     }
+    // not decoded (e.g. opened as a local file) → play the recording directly
+    const url=big ? ['fart2.wav','fart3.wav'][Math.floor(Math.random()*2)]
+                  : ['fart1.wav','fart2.wav','fart3.wav'][Math.floor(Math.random()*3)];
+    if(playUrl(url, big?1.0:0.85)){ loadFarts(); return; }
     loadFarts();   // retry for next time, then synthesize this one
     const t0=now();
     const n=9+Math.floor(Math.random()*4)+(big?5:0)+(wet?5:0);
@@ -585,6 +654,8 @@ const Audio3D = (function(){
       src.connect(g); g.connect(master); src.start(now());
       return;
     }
+    // not decoded (local-file mode) → play the recording directly
+    if(playUrl('meow.mp3', 0.9)){ loadMeow(); return; }
     loadMeow();   // retry for next time, then synthesize this one
     const t=now(), D=0.85;
     const o1=ctx.createOscillator(); o1.type='triangle';   // fundamental (soft, vocal)
@@ -630,22 +701,28 @@ const Audio3D = (function(){
   // fully tear down audio so nothing keeps playing after the tab closes/hides
   function close(){
     clearTimers();
+    stopMedia();                                  // stop any HTMLAudio fallback clips
+    try{ if(master){ master.gain.value=0; master.disconnect(); } }catch(e){}
     try{ if(noiseSrc) noiseSrc.stop(); }catch(e){}
     try{ if(rumbleOsc) rumbleOsc.stop(); }catch(e){}
     if(ctx){ try{ ctx.close(); }catch(e){} }
-    ctx=null; master=null; started=false; alive=false;
+    ctx=null; decodeCtx=null; master=null; started=false; alive=false;
   }
-  function suspend(){ if(ctx&&ctx.state==="running"){ try{ctx.suspend();}catch(e){} } }
+  function suspend(){
+    stopMedia();                                  // file:// clips aren't routed through ctx — stop them directly
+    if(ctx&&ctx.state==="running"){ try{ctx.suspend();}catch(e){} }
+  }
   function resume(){ if(ctx&&ctx.state==="suspended"){ try{ctx.resume();}catch(e){} } }
   // silence the looping ambient bed without tearing down the context
   function quiet(){
     if(!ctx) return;
     clearTimers();
+    stopMedia();
     const t=now();
     if(bedGain)    bedGain.gain.linearRampToValueAtTime(0, t+0.4);
     if(rumbleGain) rumbleGain.gain.linearRampToValueAtTime(0, t+0.4);
   }
-  return { init, setStage, setFood, splash, pee, plop, fart, meow, toggleMute, close, suspend, resume, quiet, get muted(){return muted;} };
+  return { init, preload, setStage, setFood, splash, pee, plop, fart, meow, toggleMute, close, suspend, resume, quiet, get muted(){return muted;} };
 })();
 window.Audio3D=Audio3D;
 
@@ -695,6 +772,23 @@ const FOODS = [
       note:{mouth:"Wait — did you just eat a <b>kitten</b>?! (Relax, it's a toy one.)",
             stomach:"Fur is mostly <b>keratin</b> — even stomach acid can't break it down.",
             large:"All that fluff is indigestible, so it rides with you to the very end."}} },
+  { emoji:"🐷", name:"Pig",       type:"solid", cat:"animal", color:0xe49aa6,
+    tr:{stom:1.7, fib:0.3, grease:0.7, crunch:0.3,
+      note:{stomach:"A whole pig is mostly <b>fat and protein</b> — this'll sit in the acid for hours."}} },
+  { emoji:"🐴", name:"Horse",     type:"solid", cat:"animal", color:0x6b4a2f,
+    tr:{stom:1.8, fib:0.6, grease:0.4, crunch:0.4,
+      note:{stomach:"That's a lot of <b>muscle</b> — pepsin has its work cut out for it."}} },
+  { emoji:"🐶", name:"Dog",       type:"solid", cat:"animal", color:0xb5793f,
+    tr:{stom:1.6, fib:0.5, grease:0.5, crunch:0.35,
+      note:{mouth:"You ate a <b>dog</b>?! (It's just a plush one — phew.)",
+            large:"All that fur rides along with you, undigested, to the very end."}} },
+  { emoji:"🐢", name:"Turtle",    type:"solid", cat:"animal", color:0x3f6e3a,
+    tr:{stom:1.9, fib:1.2, grease:0.2, crunch:0.7,
+      note:{stomach:"The <b>shell</b> is basically bone — even acid this strong can't dissolve it.",
+            large:"Shell fragments are completely indigestible, riding with you to the end."}} },
+  { emoji:"🐦", name:"Bird",      type:"solid", cat:"animal", color:0x4a78c4,
+    tr:{stom:1.3, fib:0.4, grease:0.3, crunch:0.5,
+      note:{stomach:"Hollow bird <b>bones</b> snap easily, but the <b>feathers</b> won't break down."}} },
   { emoji:"💧", name:"Water",     type:"liquid", color:0x9fd4e0,
     tr:{note:{kidney:"Pure hydration — the kidneys barely have to work to balance it."}} },
   { emoji:"🥤", name:"Soda",      type:"liquid", color:0x6a3a1a,
@@ -1812,7 +1906,7 @@ function decorToilet(group, path, stage){
 
   // ---- a black cat sitting to the right of the toilet, watching ----
   const cat=makeCat();
-  cat.position.set(5.6, waterY-8.4, cz+1.2);   // on the floor, right of the bowl
+  cat.position.set(8.0, waterY-8.4, cz+1.4);   // on the floor, well to the right of the bowl
   cat.scale.setScalar(1.7);
   cat.rotation.y=-1.84;                          // turn to face the bowl
   group.add(cat);
@@ -1861,8 +1955,24 @@ function decorToilet(group, path, stage){
     stream=new THREE.Mesh(streamGeo, streamMat); stream.visible=false; group.add(stream);
   }
 
+  // ---- splats of poop flung onto the seat ring on impact (solids only) ----
+  const seatSplats=[];
+  if(!isPee){
+    const poo=new THREE.Color(0x5e3a1c).lerp(new THREE.Color(chosenFood?chosenFood.color:0x5e3a1c),0.5);
+    const splatMat=new THREE.MeshPhysicalMaterial({color:poo, roughness:0.4, metalness:0.0,
+      clearcoat:0.6, clearcoatRoughness:0.2, emissive:poo.clone().multiplyScalar(0.05)});
+    const seatY=waterY+1.12;
+    [-0.95,-0.45,0.0,0.5,1.0].forEach(a=>{
+      const blob=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.16+Math.random()*0.12,12,10),6,0.3), splatMat);
+      const r=3.8*(0.97+Math.random()*0.1);
+      blob.position.set(Math.sin(a)*r, seatY, cz+Math.cos(a)*r*ZS);
+      blob.visible=false; blob.scale.setScalar(0.001);
+      group.add(blob); seatSplats.push(blob);
+    });
+  }
+
   splashState={ waterY, cz, water, waterGeo, baseWaterPos,
-                ripples, drops, dropGeo, dpos, dvel, DROPS, crown, figDropY, stream,
+                ripples, drops, dropGeo, dpos, dvel, DROPS, crown, figDropY, stream, seatSplats,
                 triggered:false, fartPlayed:false, time:0, kind:stage.exitKind };
 }
 
@@ -1884,6 +1994,14 @@ function updateSplash(dt, t){
     s.crown.scale.set(1+cl*0.7, cl*1.5, 1+cl*0.7);
     s.crown.material.opacity=Math.max(0,0.9-T*1.3);
   }
+  if(s.seatSplats){
+    s.seatSplats.forEach((b,i)=>{
+      const lt=T-0.02-i*0.04; if(lt<=0) return;   // splats land just after impact, staggered
+      b.visible=true;
+      const sc=Math.min(lt*7,1);
+      b.scale.set(sc,sc*0.42,sc);
+    });
+  }
   s.drops.visible=true;
   s.drops.material.opacity=Math.max(0,1-T*0.65);
   for(let i=0;i<s.DROPS;i++){
@@ -1899,8 +2017,8 @@ function triggerSplash(){
   if(window.Audio3D){
     if(s.kind==="pee") Audio3D.pee();
     else { Audio3D.plop(); if(hasRuns) setTimeout(()=>Audio3D.splash(),140); }
-    // …beat… then the cat reacts
-    setTimeout(()=>Audio3D.meow(), s.kind==="pee"?1900:1200);
+    // …beat… then the cat reacts (after the pee/plop tail, while the scene's still up)
+    setTimeout(()=>Audio3D.meow(), s.kind==="pee"?1600:1200);
   }
   screenRipple(s.kind);
 }
@@ -2167,11 +2285,14 @@ function makeBolus(hex){
 }
 /* classic coiled "soft-serve" poop — stacked tapering bumpy blobs + tip.
    loose=true → a wet splatty pile instead (diarrhea) */
-function makePoop(loose){
+function makePoop(loose, color){
   const g=new THREE.Group();
+  const base=new THREE.Color(color!=null?color:0x5e3a1c);
+  if(loose) base.offsetHSL(0,0,0.06);   // wet/loose reads a touch lighter
   const mat=new THREE.MeshPhysicalMaterial({
-    color:loose?0x6b4423:0x5e3a1c, roughness:loose?0.28:0.5, metalness:0.0,
-    clearcoat:loose?0.85:0.55, clearcoatRoughness:loose?0.12:0.3, emissive:0x140a04
+    color:base, roughness:loose?0.28:0.5, metalness:0.0,
+    clearcoat:loose?0.85:0.55, clearcoatRoughness:loose?0.12:0.3,
+    emissive:base.clone().multiplyScalar(0.06)
   });
   if(loose){
     const base=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.78,20,16),4,0.22), mat);
@@ -2352,6 +2473,109 @@ function makeFoodModel(food){
       const kit=makeCat();
       kit.scale.setScalar(0.34); kit.position.y=-0.7; g.add(kit);
       break; }
+    case "Pig": {
+      const pink=fm(0xe8a6b0,{r:0.55,cc:0.2}), pinkD=fm(0xd98792,{r:0.6});
+      const body=new THREE.Mesh(new THREE.SphereGeometry(0.62,28,22), pink);
+      body.scale.set(1.5,1.0,1.0); g.add(body);
+      const head=new THREE.Mesh(new THREE.SphereGeometry(0.42,24,20), pink);
+      head.position.set(0.92,0.12,0); g.add(head);
+      const snout=new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.22,0.18,16), pinkD);
+      snout.rotation.z=Math.PI/2; snout.position.set(1.28,0.05,0); g.add(snout);
+      [-1,1].forEach(s=>{ const nost=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,0.05,8), fm(0x9a5560));
+        nost.rotation.z=Math.PI/2; nost.position.set(1.37,0.05,s*0.07); g.add(nost);
+        const ear=new THREE.Mesh(new THREE.ConeGeometry(0.13,0.22,4), pink);
+        ear.position.set(0.86,0.5,s*0.2); ear.rotation.set(0,0,-0.3); g.add(ear);
+        const eye=new THREE.Mesh(new THREE.SphereGeometry(0.05,10,8), fm(0x161016));
+        eye.position.set(1.16,0.22,s*0.18); g.add(eye); });
+      [[-0.5,0.32],[-0.5,-0.32],[0.5,0.32],[0.5,-0.32]].forEach(([x,z])=>{
+        const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.13,0.13,0.5,12), pink);
+        leg.position.set(x,-0.55,z); g.add(leg); });
+      const tail=new THREE.Mesh(new THREE.TorusGeometry(0.12,0.04,8,16,Math.PI*1.6), pinkD);
+      tail.position.set(-0.92,0.16,0); tail.rotation.y=Math.PI/2; g.add(tail);
+      g.scale.setScalar(0.92);
+      break; }
+    case "Horse": {
+      const coat=fm(0x7a5436,{r:0.6}), mane=fm(0x2e1d10,{r:0.7});
+      const body=new THREE.Mesh(new THREE.SphereGeometry(0.6,28,22), coat);
+      body.scale.set(1.55,1.0,0.92); g.add(body);
+      const neck=new THREE.Mesh(new THREE.CylinderGeometry(0.26,0.34,0.9,16), coat);
+      neck.position.set(0.86,0.5,0); neck.rotation.z=-0.7; g.add(neck);
+      const head=new THREE.Mesh(new THREE.SphereGeometry(0.3,22,18), coat);
+      head.scale.set(1.5,0.9,0.85); head.position.set(1.36,0.86,0); g.add(head);
+      const mn=new THREE.Mesh(new THREE.BoxGeometry(0.1,0.7,0.5), mane);
+      mn.position.set(0.78,0.74,0); mn.rotation.z=-0.7; g.add(mn);
+      [-1,1].forEach(s=>{ const ear=new THREE.Mesh(new THREE.ConeGeometry(0.07,0.18,8), coat);
+        ear.position.set(1.32,1.16,s*0.14); g.add(ear);
+        const eye=new THREE.Mesh(new THREE.SphereGeometry(0.05,10,8), fm(0x100b08));
+        eye.position.set(1.5,0.94,s*0.18); g.add(eye); });
+      [[-0.55,0.28],[-0.55,-0.28],[0.45,0.28],[0.45,-0.28]].forEach(([x,z])=>{
+        const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.11,0.09,0.85,12), coat);
+        leg.position.set(x,-0.7,z); g.add(leg); });
+      const tail=new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.03,0.7,10), mane);
+      tail.position.set(-0.95,-0.1,0); tail.rotation.z=0.5; g.add(tail);
+      g.scale.setScalar(0.86); g.position.y=-0.2;
+      break; }
+    case "Dog": {
+      const fur=fm(0xb5793f,{r:0.65}), furD=fm(0x8a5628,{r:0.7});
+      const body=new THREE.Mesh(new THREE.SphereGeometry(0.58,26,22), fur);
+      body.scale.set(1.5,1.0,0.95); g.add(body);
+      const head=new THREE.Mesh(new THREE.SphereGeometry(0.42,24,20), fur);
+      head.position.set(0.92,0.28,0); g.add(head);
+      const snout=new THREE.Mesh(new THREE.BoxGeometry(0.34,0.24,0.28), fur);
+      snout.position.set(1.28,0.16,0); g.add(snout);
+      const nose=new THREE.Mesh(new THREE.SphereGeometry(0.09,12,10), fm(0x161013));
+      nose.position.set(1.46,0.2,0); g.add(nose);
+      [-1,1].forEach(s=>{ const ear=new THREE.Mesh(new THREE.SphereGeometry(0.16,14,12), furD);
+        ear.scale.set(0.5,1.0,0.7); ear.position.set(0.78,0.5,s*0.34); ear.rotation.z=0.3; g.add(ear);
+        const eye=new THREE.Mesh(new THREE.SphereGeometry(0.06,10,8), fm(0x120c0a));
+        eye.position.set(1.16,0.38,s*0.18); g.add(eye); });
+      [[-0.5,0.3],[-0.5,-0.3],[0.5,0.3],[0.5,-0.3]].forEach(([x,z])=>{
+        const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.11,0.55,12), fur);
+        leg.position.set(x,-0.6,z); g.add(leg); });
+      const tail=new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.05,0.55,10), fur);
+      tail.position.set(-0.92,0.24,0); tail.rotation.z=0.9; g.add(tail);
+      g.scale.setScalar(0.92);
+      break; }
+    case "Turtle": {
+      const shellMat=fm(0x3f6e3a,{r:0.5,cc:0.4}), skin=fm(0x6f9a4a,{r:0.6});
+      const shell=new THREE.Mesh(new THREE.SphereGeometry(0.8,32,24,0,Math.PI*2,0,Math.PI*0.5), shellMat);
+      shell.scale.set(1.0,0.62,1.2); shell.position.y=0.06; g.add(shell);
+      // scute pattern: hexagonal-ish plates suggested by darker ridges
+      const ridge=fm(0x2c5028,{r:0.55});
+      for(let i=0;i<6;i++){ const a=i/6*Math.PI*2;
+        const pl=new THREE.Mesh(new THREE.SphereGeometry(0.22,12,10,0,Math.PI*2,0,Math.PI*0.5), ridge);
+        pl.scale.set(1,0.4,1.2); pl.position.set(Math.cos(a)*0.42,0.28,Math.sin(a)*0.5); g.add(pl); }
+      const plast=new THREE.Mesh(new THREE.CylinderGeometry(0.78,0.78,0.12,32), fm(0xc9b878,{r:0.6}));
+      plast.scale.z=1.2; plast.position.y=0.0; g.add(plast);
+      const head=new THREE.Mesh(new THREE.SphereGeometry(0.26,20,16), skin);
+      head.scale.set(1.0,0.9,1.3); head.position.set(0,0.06,1.18); g.add(head);
+      [-1,1].forEach(s=>{ const eye=new THREE.Mesh(new THREE.SphereGeometry(0.05,10,8), fm(0x0e0c08));
+        eye.position.set(s*0.12,0.14,1.42); g.add(eye); });
+      [[0.48,0.78],[ -0.48,0.78],[0.48,-0.78],[-0.48,-0.78]].forEach(([x,z])=>{
+        const flip=new THREE.Mesh(new THREE.SphereGeometry(0.2,14,12), skin);
+        flip.scale.set(0.8,0.4,1.0); flip.position.set(x,-0.02,z*0.7); g.add(flip); });
+      const tail=new THREE.Mesh(new THREE.ConeGeometry(0.1,0.3,10), skin);
+      tail.rotation.x=-Math.PI/2; tail.position.set(0,0.02,-1.0); g.add(tail);
+      break; }
+    case "Bird": {
+      const body=fm(0x4a78c4,{r:0.55}), wing=fm(0x3a5fa0,{r:0.6}), belly=fm(0xd8e4f0,{r:0.6});
+      const torso=new THREE.Mesh(new THREE.SphereGeometry(0.55,28,22), body);
+      torso.scale.set(0.92,1.05,1.25); g.add(torso);
+      const bel=new THREE.Mesh(new THREE.SphereGeometry(0.4,22,18), belly);
+      bel.scale.set(0.85,0.95,0.8); bel.position.set(0,-0.1,0.34); g.add(bel);
+      const head=new THREE.Mesh(new THREE.SphereGeometry(0.36,24,20), body);
+      head.position.set(0,0.6,0.3); g.add(head);
+      const beak=new THREE.Mesh(new THREE.ConeGeometry(0.12,0.34,4), fm(0xf0a830,{r:0.5}));
+      beak.rotation.x=Math.PI/2; beak.position.set(0,0.58,0.74); g.add(beak);
+      [-1,1].forEach(s=>{ const eye=new THREE.Mesh(new THREE.SphereGeometry(0.07,12,10), fm(0x0c0c10));
+        eye.position.set(s*0.16,0.66,0.56); g.add(eye);
+        const wg=new THREE.Mesh(new THREE.SphereGeometry(0.42,18,14), wing);
+        wg.scale.set(0.28,0.75,1.05); wg.position.set(s*0.5,0.0,-0.05); wg.rotation.z=s*0.2; g.add(wg); });
+      const tail=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.1,0.55), wing);
+      tail.position.set(0,-0.1,-0.7); tail.rotation.x=0.5; g.add(tail);
+      [-1,1].forEach(s=>{ const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,0.32,8), fm(0xf0a830,{r:0.6}));
+        leg.position.set(s*0.16,-0.62,0.1); g.add(leg); });
+      break; }
     default: return makeBolus(food?food.color:0xc0392b);
   }
   return g;
@@ -2365,7 +2589,12 @@ function avatarSpec(stage){
     return {kind:"drop", color:col};
   }
   // solids: recognisable food in the mouth → swallowed as a chewed bolus → poop at the end
-  if(/^(large|rectum|toilet)$/.test(stage.id)) return {kind:"poop", color:0x5e3a1c};
+  // the poop is tinted by what you ate (broccoli → green, etc.) over a base brown
+  if(/^(large|rectum|toilet)$/.test(stage.id)){
+    const poo=new THREE.Color(0x5e3a1c).lerp(new THREE.Color(fc),0.5);
+    poo.offsetHSL(0,0,-0.04);   // settle it down so it still reads as poo
+    return {kind:"poop", color:poo.getHex()};
+  }
   if(stage.id==="mouth")                       return {kind:"food", color:fc};
   return {kind:"bolus", color:fc};
 }
@@ -2375,7 +2604,7 @@ function setAvatar(stage){
   if(key===avatarKey && foodAvatar) return;
   avatarKey=key;
   if(foodAvatar){ scene.remove(foodAvatar); disposeGroup(foodAvatar); foodAvatar=null; }
-  foodAvatar = spec.kind==="poop" ? makePoop(hasRuns)
+  foodAvatar = spec.kind==="poop" ? makePoop(hasRuns, spec.color)
              : spec.kind==="drop" ? makeDrop(spec.color)
              : spec.kind==="food" ? makeFoodModel(chosenFood)
              : makeBolus(spec.color);
@@ -2412,11 +2641,11 @@ function animate(){
       // pull back far enough to frame the whole toilet AND the cat beside it;
       // widen further on narrow/portrait phones so nothing gets cropped
       const portrait = H()>=W();
-      const fov = portrait?80:52;
+      const fov = portrait?78:52;
       if(camera.fov!==fov){ camera.fov=fov; camera.updateProjectionMatrix(); }
-      camera.position.set(2.6, wy+8, cz + (portrait?36:32));
+      camera.position.set(1.0, wy+7, cz + (portrait?32:28));
       camera.up.set(0,1,0);
-      camera.lookAt(1.4, wy + (portrait?-1.2:-0.8), cz);
+      camera.lookAt(-0.4, wy + (portrait?-0.8:-0.5), cz);
       camera.rotateY(yaw*0.4); camera.rotateX(pitch*0.4);
       const dropTop=(s&&s.figDropY!=null)?s.figDropY:(wy+3.2);   // beneath the figure
       if(s&&s.stream){
@@ -2558,13 +2787,13 @@ function updateReadouts(stage){
    ============================================================ */
 function buildStartUI(){
   const fc=document.getElementById('foods');
-  const section=(title,icon,type)=>{
+  const section=(title,icon,pred)=>{
     const h=document.createElement('div'); h.className='cat-head';
     h.innerHTML=`<span class="ch-ic">${icon}</span>${title}<span class="ch-ln"></span>`;
     fc.appendChild(h);
     const grid=document.createElement('div'); grid.className='grid-foods';
     FOODS.forEach((f,i)=>{
-      if(f.type!==type) return;
+      if(!pred(f)) return;
       const el=document.createElement('div'); el.className='chip'; el.dataset.i=i;
       el.innerHTML=`<span class="emo">${f.emoji}</span><span class="nm">${f.name}</span>`;
       el.onclick=()=>{ chosenFood=f;
@@ -2574,8 +2803,9 @@ function buildStartUI(){
     });
     fc.appendChild(grid);
   };
-  section("Foods","🍽️","solid");
-  section("Drinks","🥤","liquid");
+  section("Foods","🍽️",f=>f.type==="solid"&&f.cat!=="animal");
+  section("Animals","🐾",f=>f.cat==="animal");
+  section("Drinks","🥤",f=>f.type==="liquid");
   const hc=document.getElementById('hosts');
   HOSTS.forEach(h=>{
     const el=document.createElement('div'); el.className='host';
@@ -2719,6 +2949,7 @@ function wireControls(){
 /* --- boot --- */
 window.addEventListener('load',()=>{
   buildStartUI(); wireControls(); initEngine();
+  if(window.Audio3D) Audio3D.preload();   // decode fart/meow clips up front
   setTimeout(()=>{
     document.getElementById('loading').style.display='none';
     document.getElementById('start').style.display='flex';
