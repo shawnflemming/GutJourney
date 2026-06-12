@@ -39,5 +39,10 @@ build command required.
 - `fart1.wav` — ["Human fart"](https://commons.wikimedia.org/wiki/File:Human_fart.wav) by Subhashish Panigrahi, Wikimedia Commons, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
 - `fart2.wav` — ["Flatulence"](https://commons.wikimedia.org/wiki/File:Flatulence.wav) by JohnSumisu, Wikimedia Commons, [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/).
 - `fart3.wav` — ["Flatus"](https://commons.wikimedia.org/wiki/File:Flatus.wav), Wikimedia Commons, [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/).
+- `pig.wav` — ["Mudchute pig 1"](https://commons.wikimedia.org/wiki/File:Mudchute_pig_1.ogg) by Secretlondon, Wikimedia Commons, [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/) (converted to WAV).
+- `horse.wav` — ["Wiehern"](https://commons.wikimedia.org/wiki/File:Wiehern.ogg), Wikimedia Commons, public domain (converted to WAV).
+- `dog.wav` — ["Perro ladrando"](https://commons.wikimedia.org/wiki/File:Perro_ladrando.ogg) by Armartinell, Wikimedia Commons, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) (converted to WAV).
+- `turtle.wav` — ["Single Frog Croak"](https://commons.wikimedia.org/wiki/File:Single_Frog_Croak.oga) by MichaeltheFox8621, Wikimedia Commons, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) (converted to WAV; stands in for the near-silent turtle).
+- `bird.mp3` — ["Bird chirp 2 (Gravity Sound)"](https://commons.wikimedia.org/wiki/File:Bird_chirp_2_(Gravity_Sound).mp3) by Gravity Sound, Wikimedia Commons, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 - Bathroom poster — ["Taylor Swift at the 2023 MTV Video Music Awards"](https://commons.wikimedia.org/wiki/File:Taylor_Swift_at_the_2023_MTV_Video_Music_Awards_(2)_(cropped).png) by iHeartRadioCA, Wikimedia Commons, [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) (loaded at runtime).
 - [Three.js](https://threejs.org/) r128, MIT license (vendored as `three.min.js`).
