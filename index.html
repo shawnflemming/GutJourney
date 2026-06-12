@@ -290,6 +290,7 @@ const Audio3D = (function(){
   /* real animal recordings (Wikimedia Commons), one clip per creature */
   const ANIMAL_FILES={Pig:'pig.wav', Horse:'horse.wav', Dog:'dog.wav', Turtle:'turtle.wav', Bird:'bird.mp3'};
   let animalBufs={}, animalsTried=false;
+  let gruntBuf=null, gruntTried=false;
   let decodeCtx=null;   // lightweight context so clips can decode BEFORE play begins
   let mediaEls=[];      // HTMLAudio fallback elements (file:// mode) — tracked so we can stop them
   function stopMedia(){ mediaEls.forEach(el=>{ try{ el.pause(); el.src=""; }catch(e){} }); mediaEls=[]; }
@@ -322,16 +323,22 @@ const Audio3D = (function(){
     animalsTried=true;
     Object.keys(ANIMAL_FILES).forEach(n=>loadClip(ANIMAL_FILES[n], b=>{ animalBufs[n]=b; }));
   }
+  function loadGrunt(){
+    if(gruntBuf||gruntTried||!decoder()) return;
+    gruntTried=true;
+    loadClip('grunt.wav', b=>{ gruntBuf=b; }, ()=>{ gruntTried=false; });
+  }
   // kick off decoding immediately at page load, long before any sound plays
-  function preload(){ loadMeow(); loadFarts(); loadAnimals(); }
+  function preload(){ loadMeow(); loadFarts(); loadAnimals(); loadGrunt(); }
   /* file://-safe playback: when the page is opened as a local file, fetch() of
      the clips is blocked by the browser, so decodeAudioData never gets them.
      HTMLAudio elements CAN load same-origin local files, so use one as a
      fallback and route it through the graph so mute/volume still apply. */
-  function playUrl(url, vol){
+  function playUrl(url, vol, rate){
     if(!ctx) return false;
     try{
       const el=new Audio(); el.src=url;
+      if(rate&&rate!==1){ el.playbackRate=rate; el.preservesPitch=false; el.mozPreservesPitch=false; }
       mediaEls.push(el);                       // track so close()/suspend() can stop it
       el.addEventListener('ended',()=>{ const i=mediaEls.indexOf(el); if(i>=0) mediaEls.splice(i,1); });
       let routed=false;
@@ -711,13 +718,25 @@ const Audio3D = (function(){
     o1.stop(t+D+0.1); o2.stop(t+D+0.1); vib.stop(t+D+0.1);
   }
 
-  /* grunt: a strained "nnngh!" — voiced low buzz pushed through a tight
-     formant, swelling then cut off. Used for the constipation finale. */
+  /* grunt: the real recorded push-grunt ("Grunt of pain", public domain),
+     pitched per host — higher for the woman, deeper for the man. Falls back
+     to HTMLAudio on file://, then to the synthesized strain. */
   function grunt(){
     if(!ctx||muted) return;
+    const fem=chosenHost&&chosenHost.id==="woman";
+    const rate=(fem?1.34:0.94)*(0.95+Math.random()*0.1);   // slight variation per push
+    if(gruntBuf){
+      const src=ctx.createBufferSource(); src.buffer=gruntBuf;
+      src.playbackRate.value=rate;
+      const g=ctx.createGain(); g.gain.value=0.95;
+      src.connect(g); g.connect(master); src.start(now());
+      return;
+    }
+    if(playUrl('grunt.wav', 0.95, rate)){ loadGrunt(); return; }
+    loadGrunt();   // retry for next time, then synthesize this one
     const t=now(), D=0.7+Math.random()*0.25;
     const o=ctx.createOscillator(); o.type='sawtooth';
-    const f0=85+Math.random()*20;
+    const f0=(fem?145:85)+Math.random()*20;
     o.frequency.setValueAtTime(f0,t);
     o.frequency.linearRampToValueAtTime(f0*1.25,t+D*0.6);   // pitch climbs with the strain
     o.frequency.linearRampToValueAtTime(f0*0.9,t+D);
