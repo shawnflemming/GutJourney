@@ -219,6 +219,9 @@
       <div class="step-label"><span class="n">02</span> Pick a sex</div>
       <div class="two" id="hosts"></div>
 
+      <div class="step-label"><span class="n">03</span> Pick a poop type <span style="text-transform:none;letter-spacing:0;color:var(--muted-2)">(solids only)</span></div>
+      <div class="grid-foods" id="poops" style="max-width:520px;"></div>
+
       <div class="launch">
         <button class="btn" id="begin" disabled>Begin to be digested <span class="arrow">→</span></button>
         <div class="summary-pill" id="sel-summary">Pick a food and a sex to begin.</div>
@@ -280,7 +283,7 @@ const Audio3D = (function(){
   let ctx=null, master=null, bedFilter=null, bedGain=null, noiseSrc=null;
   let rumbleOsc=null, rumbleGain=null;
   let started=false, muted=false, alive=false;
-  let curStage="", bubbleTimer=null, heartTimer=null, chewTimer=null;
+  let curStage="", bubbleTimer=null, heartTimer=null, chewTimer=null, fartTimer=null;
   let foodSnd={crunch:0.4, grease:0.3};
   let meowBuf=null, meowTried=false;
   let fartBufs=[], fartsTried=false;
@@ -402,6 +405,7 @@ const Audio3D = (function(){
     if(bubbleTimer){clearTimeout(bubbleTimer);bubbleTimer=null;}
     if(heartTimer){clearInterval(heartTimer);heartTimer=null;}
     if(chewTimer){clearTimeout(chewTimer);chewTimer=null;}
+    if(fartTimer){clearTimeout(fartTimer);fartTimer=null;}
   }
 
   /* chew: two quick filtered-noise crunches — brighter when the food is crunchy */
@@ -478,6 +482,12 @@ const Audio3D = (function(){
       chewTimer=setTimeout(ct,350);
     }
     if(id==="esophagus") setTimeout(()=>gulp(),150);
+    if(id==="large"||id==="rectum"){
+      // the gassy back stretch — random toots all the way down
+      const ft=()=>{ if(curStage===id&&!muted) fart({big:Math.random()<0.25});
+        fartTimer=setTimeout(ft, 2800+Math.random()*4200); };
+      fartTimer=setTimeout(ft, 1500+Math.random()*1500);
+    }
   }
 
   /* splash: impact thwack + churning water tail + droplets raining back in */
@@ -693,6 +703,126 @@ const Audio3D = (function(){
     o1.stop(t+D+0.1); o2.stop(t+D+0.1); vib.stop(t+D+0.1);
   }
 
+  /* grunt: a strained "nnngh!" — voiced low buzz pushed through a tight
+     formant, swelling then cut off. Used for the constipation finale. */
+  function grunt(){
+    if(!ctx||muted) return;
+    const t=now(), D=0.7+Math.random()*0.25;
+    const o=ctx.createOscillator(); o.type='sawtooth';
+    const f0=85+Math.random()*20;
+    o.frequency.setValueAtTime(f0,t);
+    o.frequency.linearRampToValueAtTime(f0*1.25,t+D*0.6);   // pitch climbs with the strain
+    o.frequency.linearRampToValueAtTime(f0*0.9,t+D);
+    const vib=ctx.createOscillator(); vib.type='sine'; vib.frequency.value=22;  // strained shake
+    const vibG=ctx.createGain(); vibG.gain.value=6; vib.connect(vibG); vibG.connect(o.frequency);
+    const F=ctx.createBiquadFilter(); F.type='bandpass'; F.Q.value=2.5;
+    F.frequency.setValueAtTime(380,t); F.frequency.linearRampToValueAtTime(560,t+D*0.7);
+    const g=ctx.createGain();
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.linearRampToValueAtTime(0.5,t+0.12);
+    g.gain.setValueAtTime(0.5,t+D-0.1);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+D+0.06);   // cut off with relief
+    o.connect(F); F.connect(g); g.connect(master);
+    o.start(t); o.stop(t+D+0.1); vib.start(t); vib.stop(t+D+0.1);
+  }
+
+  /* animal: one synthesized call per creature, played when an animal
+     gets chomped in the mouth. Kitten reuses the real meow recording. */
+  function animal(name){
+    if(!ctx||muted) return;
+    if(name==="Kitten"||name==="Cat"){ meow(); return; }
+    const t=now();
+    const voice=(f0Seq, dur, type, fQ, fMul, vol)=>{   // tiny formant-voice helper
+      const o=ctx.createOscillator(); o.type=type||'sawtooth';
+      f0Seq.forEach(([at,f])=>o.frequency[at===0?'setValueAtTime':'linearRampToValueAtTime'](f,t+at));
+      const F=ctx.createBiquadFilter(); F.type='bandpass'; F.Q.value=fQ||3;
+      f0Seq.forEach(([at,f])=>F.frequency[at===0?'setValueAtTime':'linearRampToValueAtTime'](f*(fMul||4),t+at));
+      const g=ctx.createGain(); g.gain.setValueAtTime(0.0001,t);
+      g.gain.linearRampToValueAtTime(vol||0.55,t+0.025);
+      g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+      o.connect(F); F.connect(g); g.connect(master); o.start(t); o.stop(t+dur+0.05);
+    };
+    switch(name){
+      case "Pig":   // two snorty oinks: low buzz snapped through a nasal formant
+        [0,0.28].forEach(dt0=>{
+          const o=ctx.createOscillator(); o.type='sawtooth';
+          o.frequency.setValueAtTime(110,t+dt0);
+          o.frequency.exponentialRampToValueAtTime(70,t+dt0+0.18);
+          const F=ctx.createBiquadFilter(); F.type='bandpass'; F.frequency.value=750; F.Q.value=6;
+          const g=ctx.createGain(); g.gain.setValueAtTime(0.0001,t+dt0);
+          g.gain.linearRampToValueAtTime(0.7,t+dt0+0.02);
+          g.gain.exponentialRampToValueAtTime(0.0001,t+dt0+0.2);
+          o.connect(F); F.connect(g); g.connect(master); o.start(t+dt0); o.stop(t+dt0+0.24);
+          const ns=ctx.createBufferSource(); ns.buffer=makeNoiseBuffer();   // snort breath
+          const nf=ctx.createBiquadFilter(); nf.type='bandpass'; nf.frequency.value=900; nf.Q.value=1.5;
+          const ng=ctx.createGain(); ng.gain.setValueAtTime(0.0001,t+dt0);
+          ng.gain.linearRampToValueAtTime(0.3,t+dt0+0.02);
+          ng.gain.exponentialRampToValueAtTime(0.0001,t+dt0+0.16);
+          ns.connect(nf); nf.connect(ng); ng.connect(master); ns.start(t+dt0); ns.stop(t+dt0+0.2);
+        });
+        break;
+      case "Horse": // whinny: high trill sliding down into a low nicker
+        { const o=ctx.createOscillator(); o.type='sawtooth';
+          o.frequency.setValueAtTime(620,t);
+          o.frequency.linearRampToValueAtTime(520,t+0.4);
+          o.frequency.exponentialRampToValueAtTime(120,t+1.0);
+          const vib=ctx.createOscillator(); vib.type='sine'; vib.frequency.value=16;  // the lip-flutter trill
+          const vibG=ctx.createGain(); vibG.gain.setValueAtTime(60,t);
+          vibG.gain.linearRampToValueAtTime(18,t+1.0);
+          vib.connect(vibG); vibG.connect(o.frequency);
+          const F=ctx.createBiquadFilter(); F.type='bandpass'; F.Q.value=2;
+          F.frequency.setValueAtTime(1600,t); F.frequency.exponentialRampToValueAtTime(500,t+1.0);
+          const g=ctx.createGain(); g.gain.setValueAtTime(0.0001,t);
+          g.gain.linearRampToValueAtTime(0.5,t+0.06);
+          g.gain.setValueAtTime(0.45,t+0.7);
+          g.gain.exponentialRampToValueAtTime(0.0001,t+1.1);
+          o.connect(F); F.connect(g); g.connect(master);
+          o.start(t); o.stop(t+1.15); vib.start(t); vib.stop(t+1.15); }
+        break;
+      case "Dog":   // two sharp barks
+        [0,0.32].forEach(dt0=>{
+          const o=ctx.createOscillator(); o.type='sawtooth';
+          o.frequency.setValueAtTime(240,t+dt0);
+          o.frequency.exponentialRampToValueAtTime(130,t+dt0+0.12);
+          const F=ctx.createBiquadFilter(); F.type='bandpass'; F.frequency.value=1100; F.Q.value=2.2;
+          const g=ctx.createGain(); g.gain.setValueAtTime(0.0001,t+dt0);
+          g.gain.linearRampToValueAtTime(0.85,t+dt0+0.015);
+          g.gain.exponentialRampToValueAtTime(0.0001,t+dt0+0.15);
+          o.connect(F); F.connect(g); g.connect(master); o.start(t+dt0); o.stop(t+dt0+0.18);
+        });
+        break;
+      case "Turtle": // slow froggy croak: low pulsing rasp
+        { const o=ctx.createOscillator(); o.type='square';
+          o.frequency.setValueAtTime(70,t);
+          o.frequency.linearRampToValueAtTime(55,t+0.6);
+          const am=ctx.createOscillator(); am.type='sine'; am.frequency.value=24;   // croak pulse
+          const amG=ctx.createGain(); amG.gain.value=0.5;
+          const dc=ctx.createGain(); dc.gain.value=0.5;
+          const F=ctx.createBiquadFilter(); F.type='lowpass'; F.frequency.value=480; F.Q.value=2;
+          const g=ctx.createGain(); g.gain.setValueAtTime(0.0001,t);
+          g.gain.linearRampToValueAtTime(0.55,t+0.08);
+          g.gain.exponentialRampToValueAtTime(0.0001,t+0.7);
+          const vca=ctx.createGain();
+          am.connect(amG); amG.connect(vca.gain); dc.connect(vca.gain);
+          o.connect(F); F.connect(vca); vca.connect(g); g.connect(master);
+          o.start(t); o.stop(t+0.75); am.start(t); am.stop(t+0.75); }
+        break;
+      case "Bird":  // three bright chirps sweeping up
+        [0,0.22,0.46].forEach((dt0,i)=>{
+          const o=ctx.createOscillator(); o.type='sine';
+          const f0=2200+i*300;
+          o.frequency.setValueAtTime(f0,t+dt0);
+          o.frequency.exponentialRampToValueAtTime(f0*1.7,t+dt0+0.08);
+          o.frequency.exponentialRampToValueAtTime(f0*1.1,t+dt0+0.14);
+          const g=ctx.createGain(); g.gain.setValueAtTime(0.0001,t+dt0);
+          g.gain.linearRampToValueAtTime(0.35,t+dt0+0.015);
+          g.gain.exponentialRampToValueAtTime(0.0001,t+dt0+0.16);
+          o.connect(g); g.connect(master); o.start(t+dt0); o.stop(t+dt0+0.2);
+        });
+        break;
+    }
+  }
+
   function toggleMute(){
     muted=!muted;
     if(master&&ctx) master.gain.linearRampToValueAtTime(muted?0:0.9, ctx.currentTime+0.2);
@@ -722,7 +852,7 @@ const Audio3D = (function(){
     if(bedGain)    bedGain.gain.linearRampToValueAtTime(0, t+0.4);
     if(rumbleGain) rumbleGain.gain.linearRampToValueAtTime(0, t+0.4);
   }
-  return { init, preload, setStage, setFood, splash, pee, plop, fart, meow, toggleMute, close, suspend, resume, quiet, get muted(){return muted;} };
+  return { init, preload, setStage, setFood, splash, pee, plop, fart, meow, grunt, animal, toggleMute, close, suspend, resume, quiet, get muted(){return muted;} };
 })();
 window.Audio3D=Audio3D;
 
@@ -808,6 +938,13 @@ const HOSTS = [
   { id:"woman", icon:"🧍‍♀️", title:"A woman", sub:"shorter urethra (~4 cm)" },
   { id:"man",   icon:"🧍‍♂️", title:"A man",   sub:"longer urethra (~20 cm)" },
 ];
+/* poop types — only matter on the solid (food/animal) route */
+const POOPS = [
+  { id:"normal",      emoji:"💩", name:"Normal" },
+  { id:"constipated", emoji:"🪨", name:"Constipation" },
+  { id:"diarrhea",    emoji:"💦", name:"Diarrhea" },
+  { id:"explosive",   emoji:"💥", name:"Explosive!" },
+];
 
 /* ============================================================
    STAGE DEFINITIONS
@@ -859,7 +996,7 @@ function stLargeIntestine(){return{ id:"large", label:"STAGE 05", name:"Large In
 };}
 function stRectum(){return{ id:"rectum", label:"STAGE 06", name:"Rectum & Anus", decor:"tube_dark",
   sub:"The exit corridor. Stored, then released through two sphincters.",
-  ph:6.8, secs:2*3600, fog:"#160c06", wall:0x8a5a4a, accent:0x5e3e34,
+  ph:6.8, secs:2*3600, fog:"#160c06", wall:0x9a5a46, wallEnd:0x4e2c1c, accent:0x5e3e34,
   fact:["THE FINAL HOLDING & RELEASE",
     "Feces collect in the <b>rectum</b>. When it stretches, you feel the urge to go. Two valves guard the exit: the <b>internal anal sphincter</b> (automatic) and the <b>external</b> one (under your control). When both relax, <b>defecation</b> pushes you out into the world."]
 };}
@@ -906,10 +1043,14 @@ let playing=true, speedMul=1, looking=false;
 let yaw=0, pitch=0;
 let headlight=null, headFront=null, headBack=null, fillLight=null, rimLight=null;
 let chosenFood=null, chosenHost=null, isLiquid=false;
+let chosenPoop=POOPS[0], poopType="normal";
 let foodTr={}, hasRuns=false, journeyEvent=null;
 let elapsedSeconds=0;
 let dynamicObjs=[];
 let transitioning=false;
+let nextPrep=null;            // pre-built next organ, welded to this tube's end
+let fogBlend=null;            // smooth fog crossfade at a seamless handoff
+let curCap=null, curPortal=null;   // current tube's end membrane + glow
 
 const W=()=>window.innerWidth, H=()=>window.innerHeight;
 
@@ -1061,7 +1202,6 @@ function makePath(segments, length, wiggle, twist){
    ============================================================ */
 function buildStage(stage){
   const group=new THREE.Group();
-  dynamicObjs=[];
   const d=stage.decor;
 
   let segs=280, len=46, wig=2.0, tw=2.2, rad=3.2, amp=0.5, freq=1.6;
@@ -1077,7 +1217,7 @@ function buildStage(stage){
   if(d==="mouth")        { len=24; wig=1.1; tw=0.7; rad=3.0; amp=0.45; freq=1.2; }
   if(d==="toilet")       { len=26; wig=0.4; tw=0.4; rad=2.2; amp=0.15; }
 
-  let path;
+  let path, capRef=null, portalRef=null;
   if(d==="toilet"){
     path=new THREE.CatmullRomCurve3([
       new THREE.Vector3(0,0,0),
@@ -1148,7 +1288,7 @@ function buildStage(stage){
     cap.position.copy(endPos).addScaledVector(endTan, rad*0.4);
     cap.lookAt(endPos.clone().sub(endTan)); // open side faces camera
     cap.rotateX(Math.PI*0.5);
-    group.add(cap);
+    group.add(cap); capRef=cap;
 
     /* glowing sphincter aperture on the membrane — the passage to the next organ */
     const portalMat = new THREE.MeshBasicMaterial({
@@ -1159,7 +1299,7 @@ function buildStage(stage){
     const portal = new THREE.Mesh(new THREE.CircleGeometry(rad*0.32, 24), portalMat);
     portal.position.copy(path.getPointAt(0.985));
     portal.lookAt(path.getPointAt(0.985).clone().sub(endTan));
-    group.add(portal);
+    group.add(portal); portalRef=portal;
 
     /* warm light at the aperture so the exit walls glow as you approach */
     const endLight = new THREE.PointLight(
@@ -1175,15 +1315,17 @@ function buildStage(stage){
   else if(d==="chamber_acid")decorStomach(group, path, rad, stage);
   else if(d==="villi")       decorVilli(group, path, rad, stage);
   else if(d==="colon")       decorColon(group, path, rad, stage);
-  else if(d==="tube_dark")   decorRings(group, path, rad, stage.accent, 18, 0.14, false);
+  else if(d==="tube_dark")   decorRectum(group, path, rad, stage);
   else if(d==="blood")       decorBlood(group, path, rad, stage);
   else if(d==="kidney")      decorKidney(group, path, rad, stage);
   else if(d==="bladder")     decorBladder(group, path, rad, stage);
   else if(d==="tube_pale")   decorRings(group, path, rad, stage.accent, 24, 0.11, false);
   else if(d==="toilet")      decorToilet(group, path, stage);
 
+  // tag this stage's animated objects so they can be culled when it's disposed
+  dynamicObjs.forEach(e=>{ if(!e._g) e._g=group; });
   scene.add(group);
-  return {group, curve:path, rad};
+  return {group, curve:path, rad, cap:capRef, portal:portalRef};
 }
 
 /* visible sphincter ring cluster near tube end */
@@ -1224,6 +1366,76 @@ function decorRings(group, path, rad, color, count, thick, doAnimate){
   }
   group.add(rings);
   if(doAnimate) dynamicObjs.push({type:"peristalsis", obj:rings, path, rad});
+}
+
+/* --- rectum: wet mucosa with the real anatomy — three crescent-shaped
+   transverse folds (the valves of Houston), branching surface veins, a
+   tightening muscular anal canal at the exit --- */
+function decorRectum(group, path, rad, stage){
+  const wallC=new THREE.Color(stage.wall);
+  // 1) valves of Houston: three big crescent shelves jutting from alternating sides
+  const foldMat=new THREE.MeshPhysicalMaterial({
+    color:wallC.clone().multiplyScalar(0.5), roughness:0.38, metalness:0.0,
+    clearcoat:0.75, clearcoatRoughness:0.12,           // wet mucosal sheen
+    emissive:wallC.clone().multiplyScalar(0.10), side:THREE.DoubleSide
+  });
+  [0.22,0.45,0.68].forEach((t,i)=>{
+    const p=path.getPointAt(t), tan=path.getTangentAt(t);
+    // a half-torus crescent, squashed flat — protrudes from one side of the lumen
+    const fold=new THREE.Mesh(new THREE.TorusGeometry(rad*0.78, rad*0.30, 12, 30, Math.PI*1.15), foldMat);
+    fold.geometry=noisyBlob(fold.geometry, 3, 0.07);
+    fold.position.copy(p); fold.lookAt(p.clone().add(tan));
+    fold.rotateZ(i*Math.PI*0.66+Math.PI*0.4);          // alternate around the wall
+    fold.scale.set(1,1,0.55);
+    group.add(fold);
+  });
+  // 2) branching surface veins snaking down the walls (haemorrhoidal plexus)
+  const veinMat=new THREE.MeshPhysicalMaterial({
+    color:0x5e2430, roughness:0.35, clearcoat:0.6, clearcoatRoughness:0.15,
+    emissive:0x2a0e14, side:THREE.DoubleSide
+  });
+  for(let v=0;v<7;v++){
+    const a0=Math.random()*Math.PI*2, drift=(Math.random()-0.5)*2.2;
+    const t0=Math.random()*0.45, t1=t0+0.25+Math.random()*0.3;
+    const vpts=[];
+    for(let k=0;k<=10;k++){
+      const t=t0+(t1-t0)*k/10;
+      const p=path.getPointAt(Math.min(t,0.99)), tan=path.getTangentAt(Math.min(t,0.99));
+      const n=new THREE.Vector3(0,1,0).cross(tan).normalize();
+      const b=tan.clone().cross(n).normalize();
+      const a=a0+drift*k/10+Math.sin(k*1.7)*0.25;       // meander as it descends
+      vpts.push(p.clone().addScaledVector(n,Math.cos(a)*rad*0.93).addScaledVector(b,Math.sin(a)*rad*0.93));
+    }
+    group.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(vpts),24,0.05+Math.random()*0.05,6,false), veinMat));
+  }
+  // 3) the anal canal: a run of ever-tighter muscle rings closing toward the exit,
+  //    darkening past the pectinate line
+  for(let k=0;k<6;k++){
+    const t=0.78+k*0.037, squeeze=1-k*0.085;
+    const p=path.getPointAt(t), tan=path.getTangentAt(t);
+    const c=wallC.clone().multiplyScalar(0.62-k*0.055); // darker and darker
+    const ring=new THREE.Mesh(new THREE.TorusGeometry(rad*0.8*squeeze, rad*(0.20+k*0.03), 12, 30),
+      new THREE.MeshPhysicalMaterial({color:c, roughness:0.45, clearcoat:0.55, clearcoatRoughness:0.18,
+        emissive:c.clone().multiplyScalar(0.16), side:THREE.DoubleSide}));
+    ring.geometry=noisyBlob(ring.geometry,4,0.05);
+    ring.position.copy(p); ring.lookAt(p.clone().add(tan));
+    group.add(ring);
+    dynamicObjs.push({type:"sphincter", obj:ring});     // they clench rhythmically
+  }
+  // 4) what you'd expect to find in a rectum: a few waiting residents
+  const pooC=new THREE.Color(0x4a2c14);
+  const pooMat=new THREE.MeshPhysicalMaterial({color:pooC, roughness:0.55,
+    clearcoat:0.5, clearcoatRoughness:0.25, emissive:pooC.clone().multiplyScalar(0.08)});
+  for(let k=0;k<4;k++){
+    const t=0.15+Math.random()*0.55;
+    const p=path.getPointAt(t), tan=path.getTangentAt(t);
+    const n=new THREE.Vector3(0,1,0).cross(tan).normalize();
+    const blob=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.16+Math.random()*0.14,10,8),5,0.3), pooMat);
+    const a=Math.random()*Math.PI*2;
+    blob.position.copy(p).addScaledVector(n.applyAxisAngle(tan,a), rad*0.88);
+    blob.scale.y=0.55;
+    group.add(blob);
+  }
 }
 
 /* --- mouth: a continuous upper + lower dental arch lining the front and
@@ -1923,8 +2135,8 @@ function decorToilet(group, path, stage){
     group.add(r); ripples.push(r);
   }
   // pee = many yellow droplets; poop = water spray flung up by the impact
-  const DROPS=isPee?240:(hasRuns?280:150);
-  const sprayMul=(!isPee&&hasRuns)?1.35:1;   // loose landing = bigger, wider spray
+  const DROPS=isPee?240:(poopType==="explosive"?420:(hasRuns?280:(poopType==="constipated"?320:150)));
+  const sprayMul=isPee?1:(poopType==="explosive"?1.9:(hasRuns?1.35:(poopType==="constipated"?1.6:1)));
   const dropGeo=new THREE.BufferGeometry();
   const dpos=new Float32Array(DROPS*3);
   const dvel=[];
@@ -1955,25 +2167,48 @@ function decorToilet(group, path, stage){
     stream=new THREE.Mesh(streamGeo, streamMat); stream.visible=false; group.add(stream);
   }
 
-  // ---- splats of poop flung onto the seat ring on impact (solids only) ----
+  // ---- splats of poop flung onto the surroundings on impact (solids only) ----
+  // normal: a few on the seat · diarrhea: more · explosive: EVERYWHERE, cat included
+  // constipation: none — one clean, enormous depth-charge splash instead
   const seatSplats=[];
-  if(!isPee){
+  if(!isPee && poopType!=="constipated"){
     const poo=new THREE.Color(0x5e3a1c).lerp(new THREE.Color(chosenFood?chosenFood.color:0x5e3a1c),0.5);
     const splatMat=new THREE.MeshPhysicalMaterial({color:poo, roughness:0.4, metalness:0.0,
       clearcoat:0.6, clearcoatRoughness:0.2, emissive:poo.clone().multiplyScalar(0.05)});
     const seatY=waterY+1.12;
-    [-0.95,-0.45,0.0,0.5,1.0].forEach(a=>{
+    const seatAngs = poopType==="explosive" ? [-2.4,-1.9,-1.4,-0.95,-0.45,0.0,0.5,1.0,1.5,2.0,2.5,2.9]
+                   : hasRuns               ? [-1.5,-0.95,-0.45,0.0,0.5,1.0,1.6]
+                   :                          [-0.95,-0.45,0.0,0.5,1.0];
+    seatAngs.forEach(a=>{
       const blob=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.16+Math.random()*0.12,12,10),6,0.3), splatMat);
       const r=3.8*(0.97+Math.random()*0.1);
       blob.position.set(Math.sin(a)*r, seatY, cz+Math.cos(a)*r*ZS);
       blob.visible=false; blob.scale.setScalar(0.001);
       group.add(blob); seatSplats.push(blob);
     });
+    if(poopType==="explosive"){
+      // …plus the tank, the lid, the floor around the bowl…
+      [[0,waterY+4.6,cz-3.85],[ -1.6,waterY+4.0,cz-3.85],[1.8,waterY+3.4,cz-3.85],
+       [0.6,waterY+3.1,cz-3.32],[-1.1,waterY+2.6,cz-3.36],
+       [4.6,waterY-8.3,cz+4.0],[-4.2,waterY-8.3,cz+3.2],[2.8,waterY-8.3,cz+6.0]].forEach(p=>{
+        const blob=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.2+Math.random()*0.16,12,10),6,0.3), splatMat);
+        blob.position.set(p[0],p[1],p[2]);
+        blob.visible=false; blob.scale.setScalar(0.001);
+        group.add(blob); seatSplats.push(blob);
+      });
+      // …and the poor cat (splats parented to the cat so they sit on its fur)
+      [[0,3.2,0.75,0.22],[0.3,2.2,0.6,0.28],[-0.25,1.5,0.9,0.24],[0.1,3.7,0.45,0.16]].forEach(p=>{
+        const blob=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(p[3],12,10),6,0.3), splatMat);
+        blob.position.set(p[0],p[1],p[2]);
+        blob.visible=false; blob.scale.setScalar(0.001);
+        cat.add(blob); seatSplats.push(blob);
+      });
+    }
   }
 
   splashState={ waterY, cz, water, waterGeo, baseWaterPos,
                 ripples, drops, dropGeo, dpos, dvel, DROPS, crown, figDropY, stream, seatSplats,
-                triggered:false, fartPlayed:false, time:0, kind:stage.exitKind };
+                triggered:false, fartPlayed:false, gruntT:-1, fartN:0, time:0, kind:stage.exitKind };
 }
 
 function updateSplash(dt, t){
@@ -1982,16 +2217,17 @@ function updateSplash(dt, t){
   if(!s.triggered){ if(t > (s.kind==="pee"?0.46:0.60)) triggerSplash(); return; }
   s.time+=dt;
   const T=s.time;
+  const bigHit=(s.kind!=="pee"&&poopType==="constipated")?1.7:1;   // boulder = monster splash
   s.ripples.forEach((r,i)=>{
     const lt=T-i*0.15; if(lt<=0) return;
     r.visible=true;
-    const sc=1+lt*9; r.scale.set(sc,sc,sc);   // sized to the smaller bowl
+    const sc=(1+lt*9)*bigHit; r.scale.set(sc,sc,sc);   // sized to the smaller bowl
     r.material.opacity=Math.max(0,0.7-lt*0.7);
   });
   if(s.crown){
     s.crown.visible=true;
     const cl=Math.min(T*4.5,1);
-    s.crown.scale.set(1+cl*0.7, cl*1.5, 1+cl*0.7);
+    s.crown.scale.set((1+cl*0.7)*bigHit, cl*1.5*bigHit, (1+cl*0.7)*bigHit);
     s.crown.material.opacity=Math.max(0,0.9-T*1.3);
   }
   if(s.seatSplats){
@@ -2016,9 +2252,26 @@ function triggerSplash(){
   s.triggered=true; s.time=0;
   if(window.Audio3D){
     if(s.kind==="pee") Audio3D.pee();
+    else if(poopType==="constipated"){       // depth charge: double plop + huge churn
+      Audio3D.plop();
+      setTimeout(()=>Audio3D.splash(),60);
+      setTimeout(()=>Audio3D.splash(),300);
+      setTimeout(()=>Audio3D.plop(),180);
+    }
+    else if(poopType==="explosive"){          // chaos: splash + a final fart flurry
+      Audio3D.plop();
+      setTimeout(()=>Audio3D.splash(),80);
+      setTimeout(()=>Audio3D.fart({wet:true,big:true}),250);
+      setTimeout(()=>Audio3D.splash(),420);
+      setTimeout(()=>Audio3D.fart({wet:true}),700);
+    }
     else { Audio3D.plop(); if(hasRuns) setTimeout(()=>Audio3D.splash(),140); }
     // …beat… then the cat reacts (after the pee/plop tail, while the scene's still up)
-    setTimeout(()=>Audio3D.meow(), s.kind==="pee"?1600:1200);
+    // explosive: the cat got hit — it complains immediately and twice
+    if(poopType==="explosive"&&s.kind!=="pee"){
+      setTimeout(()=>Audio3D.meow(),600);
+      setTimeout(()=>Audio3D.meow(),1500);
+    } else setTimeout(()=>Audio3D.meow(), s.kind==="pee"?1600:1200);
   }
   screenRipple(s.kind);
 }
@@ -2198,17 +2451,19 @@ function irisOpen(wallHex){
 /* ============================================================
    TRAVEL / FLOW
    ============================================================ */
-function startStage(i){
-  if(stageGroup){ scene.remove(stageGroup); disposeGroup(stageGroup); stageGroup=null; }
-  stageIndex=i; travelT=0; splashState=null;
-  const stage=stages[i];
-
-  scene.fog.color.set(stage.fog);
-  scene.fog.density=stage.decor==="toilet"?0.010:(stage.big?0.020:0.038);
-
+/* everything that "entering an organ" means besides geometry: lights, HUD,
+   audio bed, avatar form, banners. Shared by iris starts and seamless handoffs. */
+function applyStageEnv(stage, instantFog){
+  if(instantFog){
+    fogBlend=null;
+    scene.fog.color.set(stage.fog);
+    scene.fog.density=stage.decor==="toilet"?0.010:(stage.big?0.020:0.038);
+  } else {
+    fogBlend={from:scene.fog.color.clone(), to:new THREE.Color(stage.fog),
+              dFrom:scene.fog.density, dTo:stage.decor==="toilet"?0.010:(stage.big?0.020:0.038), k:0};
+  }
   fillLight.color.copy(new THREE.Color(stage.accent||0xff8a6a));
   rimLight.color.copy(new THREE.Color(stage.accent||0xff8a6a)).lerp(new THREE.Color(0xff2000),0.4);
-
   // tint ambient + hemi to organ wall colour without going totally dark
   scene.children.forEach(c=>{
     if(c.isAmbientLight){
@@ -2220,22 +2475,85 @@ function startStage(i){
       c.intensity=stage.decor==="toilet"?0.45:0.22;
     }
   });
-
-  const built=buildStage(stage);
-  stageGroup=built.group; curve=built.curve; curveLen=curve.getLength();
-  curveRad=built.rad||2;
   setAvatar(stage);
   updateHUD(stage);
   document.getElementById('c-end').style.display = stage.decor==="toilet" ? "none" : "";
   if(window.Audio3D) Audio3D.setStage(stage.id);
+  // an animal cries out once as the teeth start chomping
+  if(stage.id==="mouth" && chosenFood && (chosenFood.cat==="animal"||chosenFood.name==="Kitten"))
+    setTimeout(()=>{ if(window.Audio3D) Audio3D.animal(chosenFood.name); }, 1100);
   // surprise-event + diarrhea banners
   if(journeyEvent && stage.id===journeyEvent.stage){
     if(journeyEvent.speed) stage.speedScale=(stage.speedScale||1)*journeyEvent.speed;
     setTimeout(()=>showToast(journeyEvent.title, journeyEvent.text),900);
   }
-  if(hasRuns && stage.id==="large")
-    setTimeout(()=>showToast("Uh oh…","Everything is speeding up — the colon can't keep up!"),900);
+  if(stage.id==="large"){
+    if(poopType==="explosive")
+      setTimeout(()=>showToast("RUMBLE RUMBLE…","The pressure is building. This is NOT going to be graceful."),900);
+    else if(hasRuns)
+      setTimeout(()=>showToast("Uh oh…","Everything is speeding up — the colon can't keep up!"),900);
+    else if(poopType==="constipated")
+      setTimeout(()=>showToast("So… slow…","You're drying into a brick back here. This exit will take effort."),900);
+  }
+}
+
+function clearNextPrep(){
+  if(!nextPrep) return;
+  scene.remove(nextPrep.group);
+  dynamicObjs=dynamicObjs.filter(e=>e._g!==nextPrep.group);
+  disposeGroup(nextPrep.group);
+  nextPrep=null;
+}
+
+function startStage(i){
+  clearNextPrep();
+  if(stageGroup){ scene.remove(stageGroup); disposeGroup(stageGroup); stageGroup=null; }
+  dynamicObjs=[];
+  stageIndex=i; travelT=0; splashState=null;
+  const stage=stages[i];
+  const built=buildStage(stage);
+  stageGroup=built.group; curve=built.curve; curveLen=curve.getLength();
+  curveRad=built.rad||2; curCap=built.cap; curPortal=built.portal;
+  applyStageEnv(stage, true);
   irisOpen(stage.wall);
+}
+
+/* --- seamless flow: weld the next organ onto this tube's end --- */
+function prepareNextStage(){
+  const next=stages[stageIndex+1];
+  const endP=curve.getPointAt(1), endT=curve.getTangentAt(1);
+  const built=buildStage(next);
+  // align: rotate the new tube (about Y) so its heading continues ours, then
+  // translate its entrance onto our exit
+  const sP=built.curve.getPointAt(0), sT=built.curve.getTangentAt(0);
+  const yawAng=Math.atan2(endT.x,endT.z)-Math.atan2(sT.x,sT.z);
+  const M=new THREE.Matrix4().makeTranslation(endP.x,endP.y,endP.z)
+    .multiply(new THREE.Matrix4().makeRotationY(yawAng))
+    .multiply(new THREE.Matrix4().makeTranslation(-sP.x,-sP.y,-sP.z));
+  built.group.applyMatrix4(M);
+  const pts=built.curve.points.map(p=>p.clone().applyMatrix4(M));
+  const c2=new THREE.CatmullRomCurve3(pts);
+  nextPrep={stage:next, group:built.group, curve:c2, len:c2.getLength(),
+            rad:built.rad, cap:built.cap, portal:built.portal};
+  // open the membrane: you can now see straight through into the next organ
+  if(curCap) curCap.visible=false;
+  if(curPortal) curPortal.visible=false;
+}
+
+function seamHandoff(){
+  const old=stageGroup, oldLen=curveLen;
+  const leftover=Math.max(travelT-1,0);
+  stageIndex++;
+  const stage=stages[stageIndex];
+  stageGroup=nextPrep.group; curve=nextPrep.curve; curveLen=nextPrep.len;
+  curveRad=nextPrep.rad||2; curCap=nextPrep.cap; curPortal=nextPrep.portal;
+  travelT=leftover*oldLen/curveLen;
+  splashState=null; nextPrep=null;
+  applyStageEnv(stage, false);          // fog crossfades instead of snapping
+  // the organ behind us is out of sight — let it go
+  scene.remove(old);
+  dynamicObjs=dynamicObjs.filter(e=>e._g!==old);
+  disposeGroup(old);
 }
 
 let toastTimer=null;
@@ -2284,16 +2602,28 @@ function makeBolus(hex){
   return m;
 }
 /* classic coiled "soft-serve" poop — stacked tapering bumpy blobs + tip.
-   loose=true → a wet splatty pile instead (diarrhea) */
-function makePoop(loose, color){
+   loose=true → a wet splatty pile instead (diarrhea/explosive)
+   hard=true  → a dense cracked boulder (constipation) */
+function makePoop(loose, color, hard){
   const g=new THREE.Group();
   const base=new THREE.Color(color!=null?color:0x5e3a1c);
   if(loose) base.offsetHSL(0,0,0.06);   // wet/loose reads a touch lighter
+  if(hard)  base.offsetHSL(0,-0.08,-0.05);   // dry & dark
   const mat=new THREE.MeshPhysicalMaterial({
-    color:base, roughness:loose?0.28:0.5, metalness:0.0,
-    clearcoat:loose?0.85:0.55, clearcoatRoughness:loose?0.12:0.3,
+    color:base, roughness:loose?0.28:(hard?0.9:0.5), metalness:0.0,
+    clearcoat:loose?0.85:(hard?0.05:0.55), clearcoatRoughness:loose?0.12:0.3,
     emissive:base.clone().multiplyScalar(0.06)
   });
+  if(hard){
+    // a single compacted lumpy boulder — no soft coils here
+    const rock=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.85,24,20),3.2,0.18), mat);
+    rock.scale.set(1.0,0.92,1.05); g.add(rock);
+    for(let i=0;i<6;i++){ const a=i/6*Math.PI*2;           // fused hard pellets on the surface
+      const peb=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.24+Math.random()*0.1,10,8),4,0.2), mat);
+      peb.position.set(Math.cos(a)*0.62, (Math.random()-0.5)*0.7, Math.sin(a)*0.62);
+      g.add(peb); }
+    return g;
+  }
   if(loose){
     const base=new THREE.Mesh(noisyBlob(new THREE.SphereGeometry(0.78,20,16),4,0.22), mat);
     base.scale.set(1.25,0.42,1.15); g.add(base);
@@ -2600,11 +2930,11 @@ function avatarSpec(stage){
 }
 function setAvatar(stage){
   const spec=avatarSpec(stage);
-  const key=spec.kind+":"+spec.color+":"+(chosenFood?chosenFood.name:"")+(hasRuns?":runs":"");
+  const key=spec.kind+":"+spec.color+":"+(chosenFood?chosenFood.name:"")+":"+poopType;
   if(key===avatarKey && foodAvatar) return;
   avatarKey=key;
   if(foodAvatar){ scene.remove(foodAvatar); disposeGroup(foodAvatar); foodAvatar=null; }
-  foodAvatar = spec.kind==="poop" ? makePoop(hasRuns, spec.color)
+  foodAvatar = spec.kind==="poop" ? makePoop(hasRuns, spec.color, poopType==="constipated")
              : spec.kind==="drop" ? makeDrop(spec.color)
              : spec.kind==="food" ? makeFoodModel(chosenFood)
              : makeBolus(spec.color);
@@ -2617,7 +2947,15 @@ function animate(){
   const time=clock.elapsedTime;
 
   if(stageGroup&&curve){
-    const stage=stages[stageIndex];
+    let stage=stages[stageIndex];
+
+    // fog crossfade after a seamless handoff
+    if(fogBlend){
+      fogBlend.k+=dt/1.4; const k=Math.min(fogBlend.k,1);
+      scene.fog.color.copy(fogBlend.from).lerp(fogBlend.to,k);
+      scene.fog.density=fogBlend.dFrom+(fogBlend.dTo-fogBlend.dFrom)*k;
+      if(k>=1) fogBlend=null;
+    }
 
     if(playing&&!transitioning){
       // accelerate toward sphincter — sucked-through feeling
@@ -2626,9 +2964,15 @@ function animate(){
       const baseDur=stage.decor==="toilet"?10:(stage.decor==="mouth"?11:18);
       travelT+=(dt/baseDur)*speedMul*nearEnd*stageSpeed;
       elapsedSeconds+=(dt/baseDur)*speedMul*nearEnd*stageSpeed*stage.secs;
-      if(travelT>=1){ travelT=1;
-        if(stage.decor==="toilet"){ playing=false; document.getElementById('c-done').classList.add('on'); }
-        else nextStage();
+      // seamless: weld the next organ on as we approach the sphincter
+      if(stage.decor!=="toilet" && !nextPrep && travelT>0.80
+         && stageIndex+1<stages.length && stages[stageIndex+1].decor!=="toilet"){
+        prepareNextStage();
+      }
+      if(travelT>=1){
+        if(stage.decor==="toilet"){ travelT=1; playing=false; document.getElementById('c-done').classList.add('on'); }
+        else if(nextPrep){ seamHandoff(); stage=stages[stageIndex]; }
+        else { travelT=1; nextStage(); }   // toilet (or fallback): iris transition
       }
     }
 
@@ -2658,19 +3002,59 @@ function animate(){
         s.stream.scale.set(1,h,1);
         s.stream.position.set(Math.sin(time*7)*0.06, (dropTop+bottom)/2, cz);
       } else if(foodAvatar){
-        /* ---- SOLID: the poop drops in ---- */
-        if(s && !s.fartPlayed && t>0.04){ s.fartPlayed=true;       // brrrt on release
-          if(window.Audio3D){
-            Audio3D.fart({wet:hasRuns, big:(foodTr.fib||0)>=1.2});
-            if(journeyEvent&&journeyEvent.fart2) setTimeout(()=>Audio3D.fart({big:true}),650);
-          }
-        }
-        const fallT=Math.min(t/0.60,1);            // lands as splash triggers (t>0.60)
+        /* ---- SOLID: the poop drops in — choreography depends on poop type ---- */
         const y1=wy+0.5;
-        foodAvatar.visible=!(s&&s.triggered);
-        foodAvatar.position.set(0, dropTop+(y1-dropTop)*fallT, cz);
-        foodAvatar.rotation.x+=dt*2.2; foodAvatar.rotation.y+=dt*1.4; // tumble as it falls
-        foodAvatar.scale.setScalar(1.0);
+        if(poopType==="constipated"){
+          /* strain… strain… then a BOULDER drops and depth-charges the bowl */
+          if(s && window.Audio3D){
+            // three mighty grunts while straining, then the release
+            if(t>0.05 && s.gruntT<0){ s.gruntT=0; Audio3D.grunt(); }
+            else if(t>0.17 && s.gruntT===0){ s.gruntT=1; Audio3D.grunt(); }
+            else if(t>0.29 && s.gruntT===1){ s.gruntT=2; Audio3D.grunt(); }
+            if(!s.fartPlayed && t>0.40){ s.fartPlayed=true;       // release!
+              Audio3D.fart({big:true});
+              setTimeout(()=>Audio3D.fart({big:true}),500);
+            }
+          }
+          const emerge=Math.min(t/0.40,1);                        // inching out under strain
+          const fallT=t<0.40?0:Math.min((t-0.40)/0.20,1);         // then a fast heavy drop
+          foodAvatar.visible=!(s&&s.triggered);
+          foodAvatar.position.set(0, dropTop+(y1-dropTop)*fallT, cz);
+          if(fallT===0){                                          // trembling as it strains
+            foodAvatar.position.y-=emerge*0.9;
+            foodAvatar.position.x=Math.sin(time*30)*0.05*emerge;
+            foodAvatar.rotation.x=0; foodAvatar.rotation.y+=dt*0.2;
+          } else { foodAvatar.rotation.x+=dt*1.2; foodAvatar.rotation.y+=dt*0.8; }
+          foodAvatar.scale.setScalar(0.6+emerge*1.3);             // a 1.9× MONSTER
+        } else if(poopType==="explosive"){
+          /* no dignity: a machine-gun of farts as everything sprays out at once */
+          if(s && window.Audio3D){
+            const burst=[0.04,0.14,0.26,0.38,0.50];
+            while(s.fartN<burst.length && t>burst[s.fartN]){
+              Audio3D.fart({wet:true, big:s.fartN%2===0}); s.fartN++;
+            }
+            if(!s.fartPlayed && t>0.04) s.fartPlayed=true;
+          }
+          const fallT=Math.min(t/0.45,1);                          // blasted out fast
+          foodAvatar.visible=!(s&&s.triggered);
+          foodAvatar.position.set(Math.sin(time*22)*0.3, dropTop+(y1-dropTop)*fallT, cz);
+          foodAvatar.rotation.x+=dt*7; foodAvatar.rotation.y+=dt*5; // wild tumble
+          foodAvatar.scale.setScalar(1.0);
+        } else {
+          /* normal & diarrhea: the classic drop, with a bonus toot on the way down */
+          if(s && window.Audio3D){
+            if(!s.fartPlayed && t>0.04){ s.fartPlayed=true;       // brrrt on release
+              Audio3D.fart({wet:hasRuns, big:(foodTr.fib||0)>=1.2});
+              if(journeyEvent&&journeyEvent.fart2) setTimeout(()=>Audio3D.fart({big:true}),650);
+            }
+            if(s.fartN===0 && t>0.35){ s.fartN=1; Audio3D.fart({wet:hasRuns}); } // squeeze out one more
+          }
+          const fallT=Math.min(t/0.60,1);            // lands as splash triggers (t>0.60)
+          foodAvatar.visible=!(s&&s.triggered);
+          foodAvatar.position.set(0, dropTop+(y1-dropTop)*fallT, cz);
+          foodAvatar.rotation.x+=dt*2.2; foodAvatar.rotation.y+=dt*1.4; // tumble as it falls
+          foodAvatar.scale.setScalar(1.0);
+        }
       }
       // lights focus on the bowl
       if(headlight){
@@ -2684,9 +3068,17 @@ function animate(){
       if(camera.fov!==74){ camera.fov=74; camera.updateProjectionMatrix(); }
       // keep the food a fixed distance AHEAD so it never fills the screen
       const gap=Math.min(Math.max(curveRad*2.4, 4.0), 8.0);
-      const aheadT=Math.min(t + gap/curveLen, 0.999);
+      const rawAheadT=t + gap/curveLen;
       const p=curve.getPointAt(t);                 // camera rides the curve
-      const ap=curve.getPointAt(aheadT);           // food sits ahead of camera
+      let ap;                                      // food sits ahead of camera
+      if(rawAheadT>0.999 && nextPrep){
+        // the food has already slipped through the sphincter — follow it into
+        // the next organ along the welded curve
+        const over=(rawAheadT-1)*curveLen;
+        ap=nextPrep.curve.getPointAt(Math.min(over/nextPrep.len,0.5));
+      } else {
+        ap=curve.getPointAt(Math.min(rawAheadT,0.999));
+      }
       const tan=curve.getTangentAt(t);
       camera.position.copy(p);
       camera.up.set(0,1,0);
@@ -2815,6 +3207,16 @@ function buildStartUI(){
       el.dataset.sel="1"; refreshLaunch(); };
     hc.appendChild(el);
   });
+  const pc=document.getElementById('poops');
+  POOPS.forEach(p=>{
+    const el=document.createElement('div'); el.className='chip';
+    el.dataset.sel=p.id==="normal"?"1":"0";   // Normal pre-selected
+    el.innerHTML=`<span class="emo">${p.emoji}</span><span class="nm">${p.name}</span>`;
+    el.onclick=()=>{ chosenPoop=p;
+      document.querySelectorAll('#poops .chip').forEach(c=>c.dataset.sel="0");
+      el.dataset.sel="1"; };
+    pc.appendChild(el);
+  });
 }
 function refreshLaunch(){
   const btn=document.getElementById('begin');
@@ -2834,8 +3236,9 @@ function begin(){
   foodTr=chosenFood.tr||{};
   Audio3D.setFood({crunch:foodTr.crunch, grease:foodTr.grease});
 
-  // roll the dice: greasy foods risk a too-fast colon (diarrhea)…
-  hasRuns = !isLiquid && Math.random() < 0.04+(foodTr.grease||0)*0.45;
+  // the chosen poop type drives the back half of the journey (solids only)
+  poopType = isLiquid ? "normal" : chosenPoop.id;
+  hasRuns  = poopType==="diarrhea"||poopType==="explosive";
   // …and sometimes a surprise event spices up the trip
   journeyEvent=null;
   if(!hasRuns && Math.random()<0.35){
@@ -2856,12 +3259,27 @@ function begin(){
     if(foodTr.note && foodTr.note[s.id])
       s.fact[1]+=`<br><br><b>${chosenFood.emoji} ${chosenFood.name}:</b> ${foodTr.note[s.id]}`;
   });
-  if(hasRuns){
-    const li=stages.find(s=>s.id==="large");
+  // shape the large intestine + rectum to match the chosen poop type
+  const li=stages.find(s=>s.id==="large"), re=stages.find(s=>s.id==="rectum");
+  if(poopType==="diarrhea"){
     if(li){ li.speedScale=(li.speedScale||1)*2.0;
       li.fact=["UH OH — THIS IS MOVING TOO FAST!",
-        "Something upset the gut (greasy food does this!) and the colon is <b>rushing</b>. There's no time to absorb the water back out of you — which means you're coming out <b>loose</b>. That's all <b>diarrhea</b> is: waste that travelled too fast to dry out. Drink extra water afterwards!"]; }
-    const re=stages.find(s=>s.id==="rectum"); if(re) re.speedScale=(re.speedScale||1)*1.5;
+        "Something upset the gut and the colon is <b>rushing</b>. There's no time to absorb the water back out of you — which means you're coming out <b>loose</b>. That's all <b>diarrhea</b> is: waste that travelled too fast to dry out. Drink extra water afterwards!"]; }
+    if(re) re.speedScale=(re.speedScale||1)*1.5;
+  } else if(poopType==="explosive"){
+    if(li){ li.speedScale=(li.speedScale||1)*2.8;
+      li.fact=["RED ALERT — TOTAL GUT PANIC!",
+        "The colon has completely given up on absorbing anything — you're <b>sprinting</b> through with all your water still aboard, and the gas pressure is building to <b>dangerous</b> levels. Brace yourself: this exit is going to be <b>messy</b>."]; }
+    if(re){ re.speedScale=(re.speedScale||1)*2.2;
+      re.fact=["PRESSURE CRITICAL — HOLD ON!",
+        "Both sphincters are straining against a wall of gas and liquid waste. When they let go, everything leaves <b>at once</b>. There is no stopping what happens next."]; }
+  } else if(poopType==="constipated"){
+    if(li){ li.speedScale=(li.speedScale||1)*0.6;
+      li.fact=["TOO SLOW — DRYING OUT…",
+        "You're crawling through the colon, and it never stops <b>absorbing water</b> — the longer you take, the harder and drier you get. That's <b>constipation</b>: waste that moved too slowly. You're turning into a rock in here. Fibre and water keep things moving!"]; }
+    if(re){ re.speedScale=(re.speedScale||1)*0.7;
+      re.fact=["STUCK AT THE EXIT",
+        "The rectum is stretched around a hard, dry mass — you. The urge to push is enormous but you're barely budging. This is going to take some serious <b>straining</b>…"]; }
   }
   elapsedSeconds=0; yaw=0; pitch=0; playing=true; speedMul=1; hintHidden=false;
   document.getElementById('c-speed').value=1;
@@ -2891,16 +3309,22 @@ function finish(){
   const transit=isP?"~2–4 hours":"1–3 days";
   const ph=isP?"2.0 → 7.4":"6.8 → 2.0 → 7.5";
   const caffe=/^(Coffee|Soda)$/.test(chosenFood.name);
+  const consist = poopType==="explosive" ? "EXPLOSIVE 💥"
+                : poopType==="diarrhea"  ? "Loose 💦"
+                : poopType==="constipated"?"Rock hard 🪨"
+                : "Well-formed ✓";
   const verdict=isP
     ?`<div class="stat"><div class="sk">Urine report</div><div class="sv">${caffe?"Extra flow ☕":"Pale &amp; healthy ✓"}</div></div>`
-    :`<div class="stat"><div class="sk">Consistency</div><div class="sv">${hasRuns?"Loose 💦":"Well-formed ✓"}</div></div>`;
+    :`<div class="stat"><div class="sk">Consistency</div><div class="sv">${consist}</div></div>`;
   document.getElementById('end-grid').innerHTML=`
     <div class="stat"><div class="sk">You were</div><div class="sv">${chosenFood.emoji} ${chosenFood.name}</div></div>
     <div class="stat"><div class="sk">Real transit time</div><div class="sv bio">${transit}</div></div>
     <div class="stat"><div class="sk">Organs visited</div><div class="sv">${stages.length-1}</div></div>
     <div class="stat"><div class="sk">pH you endured</div><div class="sv">${ph}</div></div>${verdict}`;
-  document.getElementById('end-note').innerHTML=hasRuns
-    ?"Fun fact: diarrhea is just waste that moved too fast for the colon to absorb its water. Drink extra water!"
+  document.getElementById('end-note').innerHTML=
+     poopType==="explosive"&&!isP ? "Fun fact: explosive diarrhea is gas and liquid waste leaving together under pressure. The cat would like a word."
+    :hasRuns&&!isP ? "Fun fact: diarrhea is just waste that moved too fast for the colon to absorb its water. Drink extra water!"
+    :poopType==="constipated"&&!isP ? "Fun fact: the longer waste sits in the colon, the more water gets absorbed out of it — that's why slow = hard. Fibre and water keep things moving!"
     :isP
     ?"Fun fact: your whole blood supply is filtered by the kidneys about every 5 minutes."
     :"Fun fact: your small intestine alone has the absorptive surface area of a tennis court.";
